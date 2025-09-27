@@ -12,8 +12,8 @@ using ShelfSense.Infrastructure.Data;
 namespace ShelfSense.Infrastructure.Migrations
 {
     [DbContext(typeof(ShelfSenseDbContext))]
-    [Migration("20250926150446_Staff-table")]
-    partial class Stafftable
+    [Migration("20250927172257_add-capacity-in-shelf")]
+    partial class addcapacityinshelf
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -24,6 +24,49 @@ namespace ShelfSense.Infrastructure.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+
+            modelBuilder.Entity("InventoryReport", b =>
+                {
+                    b.Property<long>("ReportId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("ReportId"));
+
+                    b.Property<bool>("AlertTriggered")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETDATE()");
+
+                    b.Property<long>("ProductId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("QuantityOnShelf")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("QuantityRestocked")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ReportDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("ShelfId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("ReportId");
+
+                    b.HasIndex("ShelfId");
+
+                    b.HasIndex("ProductId", "ShelfId", "ReportDate")
+                        .IsUnique();
+
+                    b.ToTable("InventoryReport", (string)null);
+                });
 
             modelBuilder.Entity("ProductShelf", b =>
                 {
@@ -100,6 +143,83 @@ namespace ShelfSense.Infrastructure.Migrations
                     b.ToTable("ReplenishmentAlert", (string)null);
                 });
 
+            modelBuilder.Entity("RestockTask", b =>
+                {
+                    b.Property<long>("TaskId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("TaskId"));
+
+                    b.Property<long>("AlertId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("AssignedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETDATE()");
+
+                    b.Property<long>("AssignedTo")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("ProductId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ShelfId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("pending");
+
+                    b.HasKey("TaskId");
+
+                    b.HasIndex("AlertId");
+
+                    b.HasIndex("AssignedTo");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("ShelfId");
+
+                    b.ToTable("RestockTask", (string)null);
+                });
+
+            modelBuilder.Entity("SalesHistory", b =>
+                {
+                    b.Property<long>("SaleId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("SaleId"));
+
+                    b.Property<long>("ProductId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("SaleTime")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("StoreId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("SaleId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("StoreId");
+
+                    b.ToTable("SalesHistory", (string)null);
+                });
+
             modelBuilder.Entity("Shelf", b =>
                 {
                     b.Property<long>("ShelfId")
@@ -107,6 +227,12 @@ namespace ShelfSense.Infrastructure.Migrations
                         .HasColumnType("bigint");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("ShelfId"));
+
+                    b.Property<int>("Capacity")
+                        .HasColumnType("int");
+
+                    b.Property<long>("CategoryId")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
@@ -126,6 +252,8 @@ namespace ShelfSense.Infrastructure.Migrations
                         .HasColumnType("bigint");
 
                     b.HasKey("ShelfId");
+
+                    b.HasIndex("CategoryId");
 
                     b.HasIndex("ShelfCode")
                         .IsUnique();
@@ -256,6 +384,47 @@ namespace ShelfSense.Infrastructure.Migrations
                     b.ToTable("Staff", (string)null);
                 });
 
+            modelBuilder.Entity("StockRequest", b =>
+                {
+                    b.Property<long>("RequestId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RequestId"));
+
+                    b.Property<string>("DeliveryStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("requested");
+
+                    b.Property<DateTime?>("EstimatedTimeOfArrival")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("ProductId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("RequestDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETDATE()");
+
+                    b.Property<long>("StoreId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("RequestId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("StoreId");
+
+                    b.ToTable("StockRequest", (string)null);
+                });
+
             modelBuilder.Entity("Store", b =>
                 {
                     b.Property<long>("StoreId")
@@ -298,6 +467,25 @@ namespace ShelfSense.Infrastructure.Migrations
                     b.ToTable("Stores");
                 });
 
+            modelBuilder.Entity("InventoryReport", b =>
+                {
+                    b.HasOne("ShelfSense.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Shelf", "Shelf")
+                        .WithMany()
+                        .HasForeignKey("ShelfId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Shelf");
+                });
+
             modelBuilder.Entity("ProductShelf", b =>
                 {
                     b.HasOne("ShelfSense.Domain.Entities.Product", "Product")
@@ -336,13 +524,75 @@ namespace ShelfSense.Infrastructure.Migrations
                     b.Navigation("Shelf");
                 });
 
-            modelBuilder.Entity("Shelf", b =>
+            modelBuilder.Entity("RestockTask", b =>
                 {
+                    b.HasOne("ReplenishmentAlert", "Alert")
+                        .WithMany()
+                        .HasForeignKey("AlertId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Staff", "Staff")
+                        .WithMany()
+                        .HasForeignKey("AssignedTo")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ShelfSense.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Shelf", "Shelf")
+                        .WithMany()
+                        .HasForeignKey("ShelfId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Alert");
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Shelf");
+
+                    b.Navigation("Staff");
+                });
+
+            modelBuilder.Entity("SalesHistory", b =>
+                {
+                    b.HasOne("ShelfSense.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("Store", "Store")
                         .WithMany()
                         .HasForeignKey("StoreId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("Shelf", b =>
+                {
+                    b.HasOne("ShelfSense.Domain.Entities.Category", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
 
                     b.Navigation("Store");
                 });
@@ -365,6 +615,25 @@ namespace ShelfSense.Infrastructure.Migrations
                         .HasForeignKey("StoreId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("StockRequest", b =>
+                {
+                    b.HasOne("ShelfSense.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
 
                     b.Navigation("Store");
                 });

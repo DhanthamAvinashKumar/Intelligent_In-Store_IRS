@@ -283,6 +283,11 @@ namespace ShelfSense.Infrastructure.Data
                       .WithMany()
                       .HasForeignKey(e => e.StoreId)
                       .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(e => e.Category)
+                      .WithMany()
+                      .HasForeignKey(e => e.CategoryId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
 
             // ProductShelf

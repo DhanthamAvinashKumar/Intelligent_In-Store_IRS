@@ -12,8 +12,8 @@ using ShelfSense.Infrastructure.Data;
 namespace ShelfSense.Infrastructure.Migrations
 {
     [DbContext(typeof(ShelfSenseDbContext))]
-    [Migration("20250926174315_SalesHistory-table")]
-    partial class SalesHistorytable
+    [Migration("20250927170532_NewMigs")]
+    partial class NewMigs
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -228,6 +228,9 @@ namespace ShelfSense.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("ShelfId"));
 
+                    b.Property<long>("CategoryId")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")
@@ -246,6 +249,8 @@ namespace ShelfSense.Infrastructure.Migrations
                         .HasColumnType("bigint");
 
                     b.HasKey("ShelfId");
+
+                    b.HasIndex("CategoryId");
 
                     b.HasIndex("ShelfCode")
                         .IsUnique();
@@ -572,11 +577,19 @@ namespace ShelfSense.Infrastructure.Migrations
 
             modelBuilder.Entity("Shelf", b =>
                 {
+                    b.HasOne("ShelfSense.Domain.Entities.Category", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Store", "Store")
                         .WithMany()
                         .HasForeignKey("StoreId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Category");
 
                     b.Navigation("Store");
                 });

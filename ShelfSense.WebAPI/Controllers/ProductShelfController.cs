@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using ShelfSense.Application.DTOs;
 using ShelfSense.Application.Interfaces;
 using ShelfSense.Domain.Entities;
+using ShelfSense.Infrastructure.Data;
 
 namespace ShelfSense.WebAPI.Controllers
 {
@@ -12,11 +13,13 @@ namespace ShelfSense.WebAPI.Controllers
     public class ProductShelfController : ControllerBase
     {
         private readonly IProductShelfRepository _repository;
+        private readonly ShelfSenseDbContext _dbContext;
         private readonly IMapper _mapper;
 
-        public ProductShelfController(IProductShelfRepository repository, IMapper mapper)
+        public ProductShelfController(IProductShelfRepository repository, ShelfSenseDbContext dbContext, IMapper mapper)
         {
             _repository = repository;
+            _dbContext = dbContext;
             _mapper = mapper;
         }
 
@@ -48,6 +51,18 @@ namespace ShelfSense.WebAPI.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
+            var product = await _dbContext.Products.FindAsync(request.ProductId);
+            var shelf = await _dbContext.Shelves.FindAsync(request.ShelfId);
+
+            if (product == null)
+                return BadRequest(new { message = $"Product ID '{request.ProductId}' does not exist." });
+
+            if (shelf == null)
+                return BadRequest(new { message = $"Shelf ID '{request.ShelfId}' does not exist." });
+
+            if (product.CategoryId != shelf.CategoryId)
+                return BadRequest(new { message = "Product and shelf categories must match." });
+
             var entity = _mapper.Map<ProductShelf>(request);
 
             try
@@ -57,14 +72,6 @@ namespace ShelfSense.WebAPI.Controllers
             catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("IX_ProductShelves_ProductId_ShelfId") == true)
             {
                 return Conflict(new { message = "This product is already assigned to this shelf." });
-            }
-            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FK_ProductShelves_Products_ProductId") == true)
-            {
-                return BadRequest(new { message = $"Product ID '{request.ProductId}' does not exist." });
-            }
-            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FK_ProductShelves_Shelves_ShelfId") == true)
-            {
-                return BadRequest(new { message = $"Shelf ID '{request.ShelfId}' does not exist." });
             }
 
             var response = _mapper.Map<ProductShelfResponse>(entity);
@@ -84,6 +91,18 @@ namespace ShelfSense.WebAPI.Controllers
             if (existing == null)
                 return NotFound(new { message = $"ProductShelf with ID {id} not found." });
 
+            var product = await _dbContext.Products.FindAsync(request.ProductId);
+            var shelf = await _dbContext.Shelves.FindAsync(request.ShelfId);
+
+            if (product == null)
+                return BadRequest(new { message = $"Product ID '{request.ProductId}' does not exist." });
+
+            if (shelf == null)
+                return BadRequest(new { message = $"Shelf ID '{request.ShelfId}' does not exist." });
+
+            if (product.CategoryId != shelf.CategoryId)
+                return BadRequest(new { message = "Product and shelf categories must match." });
+
             existing.ProductId = request.ProductId;
             existing.ShelfId = request.ShelfId;
             existing.Quantity = request.Quantity;
@@ -95,14 +114,6 @@ namespace ShelfSense.WebAPI.Controllers
             catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("IX_ProductShelves_ProductId_ShelfId") == true)
             {
                 return Conflict(new { message = "This product is already assigned to this shelf." });
-            }
-            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FK_ProductShelves_Products_ProductId") == true)
-            {
-                return BadRequest(new { message = $"Product ID '{request.ProductId}' does not exist." });
-            }
-            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FK_ProductShelves_Shelves_ShelfId") == true)
-            {
-                return BadRequest(new { message = $"Shelf ID '{request.ShelfId}' does not exist." });
             }
 
             return NoContent();

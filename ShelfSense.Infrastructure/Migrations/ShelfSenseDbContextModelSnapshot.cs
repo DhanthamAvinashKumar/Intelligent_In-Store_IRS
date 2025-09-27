@@ -225,6 +225,12 @@ namespace ShelfSense.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("ShelfId"));
 
+                    b.Property<int>("Capacity")
+                        .HasColumnType("int");
+
+                    b.Property<long>("CategoryId")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")
@@ -243,6 +249,8 @@ namespace ShelfSense.Infrastructure.Migrations
                         .HasColumnType("bigint");
 
                     b.HasKey("ShelfId");
+
+                    b.HasIndex("CategoryId");
 
                     b.HasIndex("ShelfCode")
                         .IsUnique();
@@ -569,11 +577,19 @@ namespace ShelfSense.Infrastructure.Migrations
 
             modelBuilder.Entity("Shelf", b =>
                 {
+                    b.HasOne("ShelfSense.Domain.Entities.Category", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Store", "Store")
                         .WithMany()
                         .HasForeignKey("StoreId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Category");
 
                     b.Navigation("Store");
                 });

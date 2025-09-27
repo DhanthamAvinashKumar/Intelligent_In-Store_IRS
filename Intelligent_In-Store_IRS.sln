@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.14.36414.22 d17.14
+VisualStudioVersion = 17.14.36414.22
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShelfSense.Application", "ShelfSense.Application\ShelfSense.Application.csproj", "{B9EEEAB9-9CF7-4C80-A558-CA5325CB8CE0}"
 EndProject
@@ -10,6 +10,13 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShelfSense.Infrastructure", "ShelfSense.Infrastructure\ShelfSense.Infrastructure.csproj", "{C294816B-BFFB-4BB7-93EB-45AE6F0DDA95}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShelfSense.WebAPI", "ShelfSense.WebAPI\ShelfSense.WebAPI.csproj", "{A32CDBA6-3D90-41ED-8342-D34BC525F569}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
+	ProjectSection(SolutionItems) = preProject
+		.gitignore = .gitignore
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -36,6 +43,12 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{B9EEEAB9-9CF7-4C80-A558-CA5325CB8CE0} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{2095A468-78A0-4B6C-8937-D4133D9D553D} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{C294816B-BFFB-4BB7-93EB-45AE6F0DDA95} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{A32CDBA6-3D90-41ED-8342-D34BC525F569} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {271200D1-6188-4051-94CB-2EB4A72C3753}
