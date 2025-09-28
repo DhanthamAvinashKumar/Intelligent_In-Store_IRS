@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShelfSense.Application.DTOs;
@@ -10,6 +11,7 @@ namespace ShelfSense.WebAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize] // 🔐 Require authentication for all endpoints
     public class InventoryReportController : ControllerBase
     {
         private readonly IInventoryReport _repository;
@@ -24,13 +26,35 @@ namespace ShelfSense.WebAPI.Controllers
         }
 
         [HttpGet]
-        public IActionResult GetAll()
+        public async Task<IActionResult> GetAll()
         {
             try
             {
-                var reports = _repository.GetAll().ToList();
-                var response = _mapper.Map<List<InventoryReportResponse>>(reports);
-                return Ok(response);
+                var reports = await _repository.GetAll().ToListAsync();
+
+                var enriched = new List<InventoryReportResponse>();
+
+                foreach (var report in reports)
+                {
+                    var shelf = await _context.Shelves
+                        .Where(s => s.ShelfId == report.ShelfId)
+                        .Select(s => new { s.Capacity })
+                        .FirstOrDefaultAsync();
+
+                    var response = _mapper.Map<InventoryReportResponse>(report);
+                    response.ShelfCapacity = shelf?.Capacity ?? 0;
+                    response.UtilizationPercent = shelf != null && shelf.Capacity > 0
+                        ? Math.Round(report.QuantityOnShelf * 100.0 / shelf.Capacity, 2)
+                        : 0;
+
+                    enriched.Add(response);
+                }
+
+                return Ok(new
+                {
+                    message = "Inventory reports retrieved successfully.",
+                    data = enriched
+                });
             }
             catch (Exception ex)
             {
@@ -47,7 +71,17 @@ namespace ShelfSense.WebAPI.Controllers
                 if (report == null)
                     return NotFound(new { message = $"Report ID {id} not found." });
 
+                var shelf = await _context.Shelves
+                    .Where(s => s.ShelfId == report.ShelfId)
+                    .Select(s => new { s.Capacity })
+                    .FirstOrDefaultAsync();
+
                 var response = _mapper.Map<InventoryReportResponse>(report);
+                response.ShelfCapacity = shelf?.Capacity ?? 0;
+                response.UtilizationPercent = shelf != null && shelf.Capacity > 0
+                    ? Math.Round(report.QuantityOnShelf * 100.0 / shelf.Capacity, 2)
+                    : 0;
+
                 return Ok(response);
             }
             catch (Exception ex)
@@ -56,6 +90,7 @@ namespace ShelfSense.WebAPI.Controllers
             }
         }
 
+        [Authorize(Roles = "manager")] // 🔐 Only managers can create reports
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] InventoryReportCreateRequest request)
         {
@@ -73,9 +108,21 @@ namespace ShelfSense.WebAPI.Controllers
                     return BadRequest(new { message = $"Shelf ID '{request.ShelfId}' does not exist." });
 
                 var entity = _mapper.Map<InventoryReport>(request);
+                entity.CreatedAt = DateTime.UtcNow;
+
                 await _repository.AddAsync(entity);
 
+                var shelf = await _context.Shelves
+                    .Where(s => s.ShelfId == entity.ShelfId)
+                    .Select(s => new { s.Capacity })
+                    .FirstOrDefaultAsync();
+
                 var response = _mapper.Map<InventoryReportResponse>(entity);
+                response.ShelfCapacity = shelf?.Capacity ?? 0;
+                response.UtilizationPercent = shelf != null && shelf.Capacity > 0
+                    ? Math.Round(entity.QuantityOnShelf * 100.0 / shelf.Capacity, 2)
+                    : 0;
+
                 return CreatedAtAction(nameof(GetById), new { id = response.ReportId }, response);
             }
             catch (DbUpdateException ex)
@@ -100,6 +147,7 @@ namespace ShelfSense.WebAPI.Controllers
             }
         }
 
+        [Authorize(Roles = "manager")] // 🔐 Only managers can update reports
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(long id, [FromBody] InventoryReportCreateRequest request)
         {
@@ -146,6 +194,7 @@ namespace ShelfSense.WebAPI.Controllers
             }
         }
 
+        [Authorize(Roles = "manager")] // 🔐 Only managers can delete reports
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(long id)
         {
