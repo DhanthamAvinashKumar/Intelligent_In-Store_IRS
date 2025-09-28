@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShelfSense.Application.DTOs;
@@ -26,6 +27,8 @@ namespace ShelfSense.WebAPI.Controllers
             _context = context;
         }
 
+        // 🔓 Accessible to all authenticated users
+        [Authorize]
         [HttpGet]
         public IActionResult GetAll()
         {
@@ -34,6 +37,7 @@ namespace ShelfSense.WebAPI.Controllers
             return Ok(response);
         }
 
+        [Authorize]
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(long id)
         {
@@ -45,6 +49,8 @@ namespace ShelfSense.WebAPI.Controllers
             return Ok(response);
         }
 
+        // 🔐 Manager-only
+        [Authorize(Roles = "manager")]
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] ReplenishmentAlertCreateRequest request)
         {
@@ -70,9 +76,15 @@ namespace ShelfSense.WebAPI.Controllers
             await _repository.AddAsync(entity);
 
             var response = _mapper.Map<ReplenishmentAlertResponse>(entity);
-            return CreatedAtAction(nameof(GetById), new { id = response.AlertId }, response);
+            return CreatedAtAction(nameof(GetById), new { id = response.AlertId }, new
+            {
+                message = "Replenishment alert created successfully.",
+                data = response
+            });
         }
 
+        // 🔐 Manager-only
+        [Authorize(Roles = "manager")]
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(long id, [FromBody] ReplenishmentAlertCreateRequest request)
         {
@@ -100,21 +112,44 @@ namespace ShelfSense.WebAPI.Controllers
 
             _mapper.Map(request, existing);
             await _repository.UpdateAsync(existing);
-            return NoContent();
+
+            return Ok(new { message = $"Replenishment alert ID {id} updated successfully." });
         }
 
+        // 🔐 Manager-only with confirmation
+        [Authorize(Roles = "manager")]
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(long id)
+        public async Task<IActionResult> Delete(long id, [FromHeader(Name = "X-Confirm-Delete")] bool confirm)
         {
+            if (!confirm)
+            {
+                return BadRequest(new
+                {
+                    message = "Deletion not confirmed. Please set 'X-Confirm-Delete: true' in the request header to proceed."
+                });
+            }
+
             var existing = await _repository.GetByIdAsync(id);
             if (existing == null)
                 return NotFound(new { message = $"Alert ID {id} not found." });
 
-            await _repository.DeleteAsync(id);
-            return NoContent();
+            try
+            {
+                await _repository.DeleteAsync(id);
+            }
+            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("REFERENCE constraint") == true)
+            {
+                return Conflict(new
+                {
+                    message = $"Cannot delete Alert ID {id} because it is referenced in other records (e.g., RestockTask)."
+                });
+            }
+
+            return Ok(new { message = $"Replenishment alert ID {id} deleted successfully." });
         }
 
-        // 🔔 NEW: Automated Replenishment Trigger
+        // 🔐 Manager-only: Automated trigger
+        [Authorize(Roles = "manager")]
         [HttpPost("check")]
         public async Task<IActionResult> CheckAndTriggerReplenishment()
         {
@@ -178,7 +213,7 @@ namespace ShelfSense.WebAPI.Controllers
                 }
             }
 
-            return Ok(new { message = "Replenishment check completed", alertsCreated });
+            return Ok(new { message = "Replenishment check completed.", alertsCreated });
         }
     }
 }

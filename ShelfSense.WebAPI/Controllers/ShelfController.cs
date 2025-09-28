@@ -1,11 +1,10 @@
 ﻿using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShelfSense.Application.DTOs;
 using ShelfSense.Application.Interfaces;
 using ShelfSense.Domain.Entities;
-//using  ShelfSense.Application.DTOs;
-
 
 namespace ShelfSense.WebAPI.Controllers
 {
@@ -22,14 +21,17 @@ namespace ShelfSense.WebAPI.Controllers
             _mapper = mapper;
         }
 
+        // 🔓 Accessible to manager and staff
+        [Authorize(Roles = "manager,staff")]
         [HttpGet]
         public IActionResult GetAll()
         {
             var shelves = _repository.GetAll().ToList();
             var response = _mapper.Map<List<ShelfResponse>>(shelves);
-            return Ok(response);
+            return Ok(new { message = "Shelves retrieved successfully.", data = response });
         }
 
+        [Authorize(Roles = "manager,staff")]
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(long id)
         {
@@ -38,9 +40,11 @@ namespace ShelfSense.WebAPI.Controllers
                 return NotFound(new { message = $"Shelf with ID {id} not found." });
 
             var response = _mapper.Map<ShelfResponse>(shelf);
-            return Ok(response);
+            return Ok(new { message = "Shelf retrieved successfully.", data = response });
         }
 
+        // 🔐 Manager-only
+        [Authorize(Roles = "manager")]
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] ShelfCreateRequest request)
         {
@@ -66,9 +70,15 @@ namespace ShelfSense.WebAPI.Controllers
             }
 
             var response = _mapper.Map<ShelfResponse>(shelf);
-            return CreatedAtAction(nameof(GetById), new { id = response.ShelfId }, response);
+            return CreatedAtAction(nameof(GetById), new { id = response.ShelfId }, new
+            {
+                message = "Shelf created successfully.",
+                data = response
+            });
         }
 
+        // 🔐 Manager-only
+        [Authorize(Roles = "manager")]
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(long id, [FromBody] ShelfCreateRequest request)
         {
@@ -99,18 +109,37 @@ namespace ShelfSense.WebAPI.Controllers
                 return BadRequest(new { message = $"Store ID '{request.StoreId}' does not exist." });
             }
 
-            return NoContent();
+            return Ok(new { message = $"Shelf ID {id} updated successfully." });
         }
 
+        // 🔐 Manager-only with confirmation
+        [Authorize(Roles = "manager")]
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(long id)
+        public async Task<IActionResult> Delete(long id, [FromHeader(Name = "X-Confirm-Delete")] bool confirm = false)
         {
+            if (!confirm)
+                return BadRequest(new
+                {
+                    message = "Deletion not confirmed. Please add header 'X-Confirm-Delete: true' to proceed."
+                });
+
             var existing = await _repository.GetByIdAsync(id);
             if (existing == null)
                 return NotFound(new { message = $"Shelf with ID {id} not found." });
 
-            await _repository.DeleteAsync(id);
-            return NoContent();
+            try
+            {
+                await _repository.DeleteAsync(id);
+            }
+            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("REFERENCE constraint") == true)
+            {
+                return Conflict(new
+                {
+                    message = $"Cannot delete Shelf ID {id} because it is referenced in other records (e.g., ProductShelf or ReplenishmentAlert)."
+                });
+            }
+
+            return Ok(new { message = $"Shelf ID {id} deleted successfully." });
         }
     }
 }

@@ -1,4 +1,114 @@
-﻿using AutoMapper;
+﻿//using AutoMapper;
+//using Microsoft.AspNetCore.Mvc;
+//using Microsoft.EntityFrameworkCore;
+//using ShelfSense.Application.DTOs;
+//using ShelfSense.Application.Interfaces;
+//using ShelfSense.Domain.Entities;
+//using static ShelfSense.Application.DTOs.ProductDto;
+
+//namespace ShelfSense.WebAPI.Controllers
+//{
+//    [ApiController]
+//    [Route("api/[controller]")]
+//    public class ProductController : ControllerBase
+//    {
+//        private readonly IProductRepository _repository;
+//        private readonly IMapper _mapper;
+
+//        public ProductController(IProductRepository repository, IMapper mapper)
+//        {
+//            _repository = repository;
+//            _mapper = mapper;
+//        }
+
+//        [HttpGet]
+//        public IActionResult GetAll()
+//        {
+//            var products = _repository.GetAll().ToList();
+//            var response = _mapper.Map<List<ProductResponse>>(products);
+//            return Ok(response);
+//        }
+
+//        [HttpGet("{id}")]
+//        public async Task<IActionResult> GetById(long id)
+//        {
+//            var product = await _repository.GetByIdAsync(id);
+//            if (product == null)
+//                return NotFound(new { message = $"Product with ID {id} not found." });
+
+//            var response = _mapper.Map<ProductResponse>(product);
+//            return Ok(response);
+//        }
+
+//        [HttpPost]
+//        public async Task<IActionResult> Create([FromBody] ProductCreateRequest request)
+//        {
+//            if (request == null)
+//                return BadRequest(new { message = "Request body cannot be null." });
+
+//            if (!ModelState.IsValid)
+//                return BadRequest(ModelState);
+
+//            var product = _mapper.Map<Product>(request);
+
+//            try
+//            {
+//                await _repository.AddAsync(product);
+//            }
+//            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("IX_Products_StockKeepingUnit") == true)
+//            {
+//                return Conflict(new { message = $"SKU '{request.StockKeepingUnit}' already exists." });
+//            }
+
+//            var response = _mapper.Map<ProductResponse>(product);
+//            return CreatedAtAction(nameof(GetById), new { id = response.ProductId }, response);
+//        }
+
+//        [HttpPut("{id}")]
+//        public async Task<IActionResult> Update(long id, [FromBody] ProductCreateRequest request)
+//        {
+//            if (request == null)
+//                return BadRequest(new { message = "Request body cannot be null." });
+
+//            if (!ModelState.IsValid)
+//                return BadRequest(ModelState);
+
+//            var existing = await _repository.GetByIdAsync(id);
+//            if (existing == null)
+//                return NotFound(new { message = $"Product with ID {id} not found." });
+
+//            existing.StockKeepingUnit = request.StockKeepingUnit;
+//            existing.ProductName = request.ProductName;
+//            existing.CategoryId = request.CategoryId;
+//            existing.PackageSize = request.PackageSize;
+//            existing.Unit = request.Unit;
+
+//            try
+//            {
+//                await _repository.UpdateAsync(existing);
+//            }
+//            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("IX_Products_StockKeepingUnit") == true)
+//            {
+//                return Conflict(new { message = $"SKU '{request.StockKeepingUnit}' already exists." });
+//            }
+
+//            return NoContent();
+//        }
+
+//        [HttpDelete("{id}")]
+//        public async Task<IActionResult> Delete(long id)
+//        {
+//            var existing = await _repository.GetByIdAsync(id);
+//            if (existing == null)
+//                return NotFound(new { message = $"Product with ID {id} not found." });
+
+//            await _repository.DeleteAsync(id);
+//            return NoContent();
+//        }
+//    }
+//}
+using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShelfSense.Application.DTOs;
@@ -21,6 +131,8 @@ namespace ShelfSense.WebAPI.Controllers
             _mapper = mapper;
         }
 
+        // 🔓 Accessible to any authenticated user
+        [Authorize]
         [HttpGet]
         public IActionResult GetAll()
         {
@@ -29,6 +141,8 @@ namespace ShelfSense.WebAPI.Controllers
             return Ok(response);
         }
 
+        // 🔓 Accessible to any authenticated user
+        [Authorize]
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(long id)
         {
@@ -40,6 +154,8 @@ namespace ShelfSense.WebAPI.Controllers
             return Ok(response);
         }
 
+        // 🔐 Restricted to manager role
+        [Authorize(Roles = "manager")]
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] ProductCreateRequest request)
         {
@@ -61,9 +177,15 @@ namespace ShelfSense.WebAPI.Controllers
             }
 
             var response = _mapper.Map<ProductResponse>(product);
-            return CreatedAtAction(nameof(GetById), new { id = response.ProductId }, response);
+            return CreatedAtAction(nameof(GetById), new { id = response.ProductId }, new
+            {
+                message = $"Product '{response.ProductName}' created successfully.",
+                data = response
+            });
         }
 
+        // 🔐 Restricted to manager role
+        [Authorize(Roles = "manager")]
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(long id, [FromBody] ProductCreateRequest request)
         {
@@ -92,18 +214,40 @@ namespace ShelfSense.WebAPI.Controllers
                 return Conflict(new { message = $"SKU '{request.StockKeepingUnit}' already exists." });
             }
 
-            return NoContent();
+            return Ok(new { message = $"Product with ID {id} updated successfully." });
         }
 
+        // 🔐 Restricted to manager role
+        [Authorize(Roles = "manager")]
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(long id)
+        public async Task<IActionResult> Delete(long id, [FromHeader(Name = "X-Confirm-Delete")] bool confirm)
         {
+            if (!confirm)
+            {
+                return BadRequest(new
+                {
+                    message = "Deletion not confirmed. Please set 'X-Confirm-Delete: true' in the request header to proceed."
+                });
+            }
+
             var existing = await _repository.GetByIdAsync(id);
             if (existing == null)
                 return NotFound(new { message = $"Product with ID {id} not found." });
 
-            await _repository.DeleteAsync(id);
-            return NoContent();
+            try
+            {
+                await _repository.DeleteAsync(id);
+            }
+            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("REFERENCE constraint") == true)
+            {
+                return Conflict(new
+                {
+                    message = $"Cannot delete Product ID {id} because it is referenced in other records (e.g., RestockTask or ReplenishmentAlert)."
+                });
+            }
+
+            return Ok(new { message = $"Product with ID {id} deleted successfully." });
         }
+
     }
 }

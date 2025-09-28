@@ -1,11 +1,11 @@
 ﻿using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShelfSense.Application.DTOs;
 using ShelfSense.Application.Interfaces;
 using ShelfSense.Domain.Entities;
 using ShelfSense.Infrastructure.Data;
-using ShelfSense.Infrastructure.Repositories;
 
 namespace ShelfSense.WebAPI.Controllers
 {
@@ -27,14 +27,17 @@ namespace ShelfSense.WebAPI.Controllers
             _context = context;
         }
 
+        // 🔓 Accessible to manager and staff
+        [Authorize(Roles = "manager,staff")]
         [HttpGet]
         public IActionResult GetAll()
         {
             var sales = _repository.GetAll().ToList();
             var response = _mapper.Map<List<SalesHistoryResponse>>(sales);
-            return Ok(response);
+            return Ok(new { message = "Sales history retrieved successfully.", data = response });
         }
 
+        [Authorize(Roles = "manager,staff")]
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(long id)
         {
@@ -43,9 +46,11 @@ namespace ShelfSense.WebAPI.Controllers
                 return NotFound(new { message = $"Sale ID {id} not found." });
 
             var response = _mapper.Map<SalesHistoryResponse>(sale);
-            return Ok(response);
+            return Ok(new { message = "Sales record retrieved successfully.", data = response });
         }
 
+        // 🔐 Manager-only
+        [Authorize(Roles = "manager")]
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] SalesHistoryCreateRequest request)
         {
@@ -59,21 +64,25 @@ namespace ShelfSense.WebAPI.Controllers
                         .ToList()
                 });
 
-            var storeExists = await _context.Stores.AnyAsync(s => s.StoreId == request.StoreId);
-            if (!storeExists)
+            if (!await _context.Stores.AnyAsync(s => s.StoreId == request.StoreId))
                 return BadRequest(new { message = $"Store ID '{request.StoreId}' does not exist." });
 
-            var productExists = await _context.Products.AnyAsync(p => p.ProductId == request.ProductId);
-            if (!productExists)
+            if (!await _context.Products.AnyAsync(p => p.ProductId == request.ProductId))
                 return BadRequest(new { message = $"Product ID '{request.ProductId}' does not exist." });
 
             var entity = _mapper.Map<SalesHistory>(request);
             await _repository.AddAsync(entity);
 
             var response = _mapper.Map<SalesHistoryResponse>(entity);
-            return CreatedAtAction(nameof(GetById), new { id = response.SaleId }, response);
+            return CreatedAtAction(nameof(GetById), new { id = response.SaleId }, new
+            {
+                message = "Sales record created successfully.",
+                data = response
+            });
         }
 
+        // 🔐 Manager-only
+        [Authorize(Roles = "manager")]
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(long id, [FromBody] SalesHistoryCreateRequest request)
         {
@@ -91,28 +100,35 @@ namespace ShelfSense.WebAPI.Controllers
             if (existing == null)
                 return NotFound(new { message = $"Sale ID {id} not found." });
 
-            var storeExists = await _context.Stores.AnyAsync(s => s.StoreId == request.StoreId);
-            if (!storeExists)
+            if (!await _context.Stores.AnyAsync(s => s.StoreId == request.StoreId))
                 return BadRequest(new { message = $"Store ID '{request.StoreId}' does not exist." });
 
-            var productExists = await _context.Products.AnyAsync(p => p.ProductId == request.ProductId);
-            if (!productExists)
+            if (!await _context.Products.AnyAsync(p => p.ProductId == request.ProductId))
                 return BadRequest(new { message = $"Product ID '{request.ProductId}' does not exist." });
 
             _mapper.Map(request, existing);
             await _repository.UpdateAsync(existing);
-            return NoContent();
+
+            return Ok(new { message = $"Sales record ID {id} updated successfully." });
         }
 
+        // 🔐 Manager-only with confirmation
+        [Authorize(Roles = "manager")]
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(long id)
+        public async Task<IActionResult> Delete(long id, [FromHeader(Name = "X-Confirm-Delete")] bool confirm = false)
         {
+            if (!confirm)
+                return BadRequest(new
+                {
+                    message = "Deletion not confirmed. Please add header 'X-Confirm-Delete: true' to proceed."
+                });
+
             var existing = await _repository.GetByIdAsync(id);
             if (existing == null)
                 return NotFound(new { message = $"Sale ID {id} not found." });
 
             await _repository.DeleteAsync(id);
-            return NoContent();
+            return Ok(new { message = $"Sales record ID {id} deleted successfully." });
         }
     }
 }

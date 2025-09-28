@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShelfSense.Application.DTOs;
@@ -23,6 +24,8 @@ namespace ShelfSense.WebAPI.Controllers
             _context = context;
         }
 
+        // 🔓 Accessible to manager and staff
+        [Authorize(Roles = "manager,staff")]
         [HttpGet]
         public IActionResult GetAll()
         {
@@ -30,7 +33,7 @@ namespace ShelfSense.WebAPI.Controllers
             {
                 var staff = _repository.GetAll().ToList();
                 var response = _mapper.Map<List<StaffResponse>>(staff);
-                return Ok(response);
+                return Ok(new { message = "Staff records retrieved successfully.", data = response });
             }
             catch (Exception ex)
             {
@@ -38,6 +41,7 @@ namespace ShelfSense.WebAPI.Controllers
             }
         }
 
+        [Authorize(Roles = "manager,staff")]
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(long id)
         {
@@ -48,7 +52,7 @@ namespace ShelfSense.WebAPI.Controllers
                     return NotFound(new { message = $"Staff ID {id} not found." });
 
                 var response = _mapper.Map<StaffResponse>(staff);
-                return Ok(response);
+                return Ok(new { message = "Staff record retrieved successfully.", data = response });
             }
             catch (Exception ex)
             {
@@ -56,6 +60,8 @@ namespace ShelfSense.WebAPI.Controllers
             }
         }
 
+        // 🔐 Manager-only
+        [Authorize(Roles = "manager")]
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] StaffCreateRequest request)
         {
@@ -72,7 +78,11 @@ namespace ShelfSense.WebAPI.Controllers
                 await _repository.AddAsync(entity);
 
                 var response = _mapper.Map<StaffResponse>(entity);
-                return CreatedAtAction(nameof(GetById), new { id = response.StaffId }, response);
+                return CreatedAtAction(nameof(GetById), new { id = response.StaffId }, new
+                {
+                    message = "Staff record created successfully.",
+                    data = response
+                });
             }
             catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("IX_Staff_Email") == true)
             {
@@ -88,6 +98,8 @@ namespace ShelfSense.WebAPI.Controllers
             }
         }
 
+        // 🔐 Manager-only
+        [Authorize(Roles = "manager")]
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(long id, [FromBody] StaffCreateRequest request)
         {
@@ -111,7 +123,7 @@ namespace ShelfSense.WebAPI.Controllers
                 existing.PasswordHash = request.PasswordHash;
 
                 await _repository.UpdateAsync(existing);
-                return NoContent();
+                return Ok(new { message = $"Staff record ID {id} updated successfully." });
             }
             catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("IX_Staff_Email") == true)
             {
@@ -127,9 +139,17 @@ namespace ShelfSense.WebAPI.Controllers
             }
         }
 
+        // 🔐 Manager-only with confirmation
+        [Authorize(Roles = "manager")]
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(long id)
+        public async Task<IActionResult> Delete(long id, [FromHeader(Name = "X-Confirm-Delete")] bool confirm = false)
         {
+            if (!confirm)
+                return BadRequest(new
+                {
+                    message = "Deletion not confirmed. Please add header 'X-Confirm-Delete: true' to proceed."
+                });
+
             try
             {
                 var existing = await _repository.GetByIdAsync(id);
@@ -137,7 +157,7 @@ namespace ShelfSense.WebAPI.Controllers
                     return NotFound(new { message = $"Staff ID {id} not found." });
 
                 await _repository.DeleteAsync(id);
-                return NoContent();
+                return Ok(new { message = $"Staff record ID {id} deleted successfully." });
             }
             catch (Exception ex)
             {

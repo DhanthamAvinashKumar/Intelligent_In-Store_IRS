@@ -210,15 +210,18 @@
 //        }
 //}
 
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using ShelfSense.Domain.Entities;
+using ShelfSense.Domain.Identity;
 
 namespace ShelfSense.Infrastructure.Data
 {
-    public class ShelfSenseDbContext : DbContext
+    public class ShelfSenseDbContext : IdentityDbContext<ApplicationUser>
     {
-        public ShelfSenseDbContext(DbContextOptions<ShelfSenseDbContext> options) : base(options) { }
-
+        //public ShelfSenseDbContext(DbContextOptions<ShelfSenseDbContext> options) : base(options) { }
+        public ShelfSenseDbContext(DbContextOptions<ShelfSenseDbContext> options)
+        : base(options) { }
         public DbSet<Category> Categories { get; set; }
         public DbSet<Product> Products { get; set; }
         public DbSet<Store> Stores { get; set; }
@@ -450,7 +453,7 @@ namespace ShelfSense.Infrastructure.Data
                 entity.ToTable("SalesHistory");
             });
 
-
+            base.OnModelCreating(modelBuilder);
 
         }
     }

@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShelfSense.Application.DTOs;
@@ -23,6 +24,8 @@ namespace ShelfSense.WebAPI.Controllers
             _mapper = mapper;
         }
 
+        // 🔓 Accessible to all authenticated users
+        [Authorize]
         [HttpGet]
         public IActionResult GetAll()
         {
@@ -31,6 +34,7 @@ namespace ShelfSense.WebAPI.Controllers
             return Ok(response);
         }
 
+        [Authorize]
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(long id)
         {
@@ -42,6 +46,8 @@ namespace ShelfSense.WebAPI.Controllers
             return Ok(response);
         }
 
+        // 🔐 Manager-only
+        [Authorize(Roles = "manager")]
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] ProductShelfCreateRequest request)
         {
@@ -75,9 +81,15 @@ namespace ShelfSense.WebAPI.Controllers
             }
 
             var response = _mapper.Map<ProductShelfResponse>(entity);
-            return CreatedAtAction(nameof(GetById), new { id = response.ProductShelfId }, response);
+            return CreatedAtAction(nameof(GetById), new { id = response.ProductShelfId }, new
+            {
+                message = "Product assigned to shelf successfully.",
+                data = response
+            });
         }
 
+        // 🔐 Manager-only
+        [Authorize(Roles = "manager")]
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(long id, [FromBody] ProductShelfCreateRequest request)
         {
@@ -116,18 +128,39 @@ namespace ShelfSense.WebAPI.Controllers
                 return Conflict(new { message = "This product is already assigned to this shelf." });
             }
 
-            return NoContent();
+            return Ok(new { message = $"ProductShelf with ID {id} updated successfully." });
         }
 
+        // 🔐 Manager-only with confirmation and constraint handling
+        [Authorize(Roles = "manager")]
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(long id)
+        public async Task<IActionResult> Delete(long id, [FromHeader(Name = "X-Confirm-Delete")] bool confirm)
         {
+            if (!confirm)
+            {
+                return BadRequest(new
+                {
+                    message = "Deletion not confirmed. Please set 'X-Confirm-Delete: true' in the request header to proceed."
+                });
+            }
+
             var existing = await _repository.GetByIdAsync(id);
             if (existing == null)
                 return NotFound(new { message = $"ProductShelf with ID {id} not found." });
 
-            await _repository.DeleteAsync(id);
-            return NoContent();
+            try
+            {
+                await _repository.DeleteAsync(id);
+            }
+            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("REFERENCE constraint") == true)
+            {
+                return Conflict(new
+                {
+                    message = $"Cannot delete ProductShelf ID {id} because it is referenced in other records."
+                });
+            }
+
+            return Ok(new { message = $"ProductShelf with ID {id} deleted successfully." });
         }
     }
 }

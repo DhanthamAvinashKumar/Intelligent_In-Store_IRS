@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShelfSense.Application.DTOs;
@@ -23,6 +24,8 @@ namespace ShelfSense.WebAPI.Controllers
             _context = context;
         }
 
+        // 🔓 Accessible to all authenticated users
+        [Authorize]
         [HttpGet]
         public IActionResult GetAll()
         {
@@ -30,7 +33,7 @@ namespace ShelfSense.WebAPI.Controllers
             {
                 var tasks = _repository.GetAll().ToList();
                 var response = _mapper.Map<List<RestockTaskResponse>>(tasks);
-                return Ok(response);
+                return Ok(new { message = "Restock tasks retrieved successfully.", data = response });
             }
             catch (Exception ex)
             {
@@ -38,6 +41,7 @@ namespace ShelfSense.WebAPI.Controllers
             }
         }
 
+        [Authorize]
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(long id)
         {
@@ -48,7 +52,7 @@ namespace ShelfSense.WebAPI.Controllers
                     return NotFound(new { message = $"Task ID {id} not found." });
 
                 var response = _mapper.Map<RestockTaskResponse>(task);
-                return Ok(response);
+                return Ok(new { message = "Restock task retrieved successfully.", data = response });
             }
             catch (Exception ex)
             {
@@ -56,36 +60,38 @@ namespace ShelfSense.WebAPI.Controllers
             }
         }
 
+        // 🔐 Manager-only
+        [Authorize(Roles = "manager")]
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] RestockTaskCreateRequest request)
         {
             if (!ModelState.IsValid)
-                return BadRequest(ModelState);
+                return BadRequest(new { message = "Validation failed.", errors = ModelState });
 
             try
             {
                 // Validate foreign keys
-                var alertExists = await _context.ReplenishmentAlerts.AnyAsync(a => a.AlertId == request.AlertId);
-                if (!alertExists)
+                if (!await _context.ReplenishmentAlerts.AnyAsync(a => a.AlertId == request.AlertId))
                     return BadRequest(new { message = $"Alert ID '{request.AlertId}' does not exist." });
 
-                var productExists = await _context.Products.AnyAsync(p => p.ProductId == request.ProductId);
-                if (!productExists)
+                if (!await _context.Products.AnyAsync(p => p.ProductId == request.ProductId))
                     return BadRequest(new { message = $"Product ID '{request.ProductId}' does not exist." });
 
-                var shelfExists = await _context.Shelves.AnyAsync(s => s.ShelfId == request.ShelfId);
-                if (!shelfExists)
+                if (!await _context.Shelves.AnyAsync(s => s.ShelfId == request.ShelfId))
                     return BadRequest(new { message = $"Shelf ID '{request.ShelfId}' does not exist." });
 
-                var staffExists = await _context.Staffs.AnyAsync(s => s.StaffId == request.AssignedTo);
-                if (!staffExists)
+                if (!await _context.Staffs.AnyAsync(s => s.StaffId == request.AssignedTo))
                     return BadRequest(new { message = $"Staff ID '{request.AssignedTo}' does not exist." });
 
                 var entity = _mapper.Map<RestockTask>(request);
                 await _repository.AddAsync(entity);
 
                 var response = _mapper.Map<RestockTaskResponse>(entity);
-                return CreatedAtAction(nameof(GetById), new { id = response.TaskId }, response);
+                return CreatedAtAction(nameof(GetById), new { id = response.TaskId }, new
+                {
+                    message = "Restock task created successfully.",
+                    data = response
+                });
             }
             catch (DbUpdateException ex)
             {
@@ -97,11 +103,13 @@ namespace ShelfSense.WebAPI.Controllers
             }
         }
 
+        // 🔐 Manager-only
+        [Authorize(Roles = "manager")]
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(long id, [FromBody] RestockTaskCreateRequest request)
         {
             if (!ModelState.IsValid)
-                return BadRequest(ModelState);
+                return BadRequest(new { message = "Validation failed.", errors = ModelState });
 
             try
             {
@@ -110,25 +118,22 @@ namespace ShelfSense.WebAPI.Controllers
                     return NotFound(new { message = $"Task ID {id} not found." });
 
                 // Validate foreign keys
-                var alertExists = await _context.ReplenishmentAlerts.AnyAsync(a => a.AlertId == request.AlertId);
-                if (!alertExists)
+                if (!await _context.ReplenishmentAlerts.AnyAsync(a => a.AlertId == request.AlertId))
                     return BadRequest(new { message = $"Alert ID '{request.AlertId}' does not exist." });
 
-                var productExists = await _context.Products.AnyAsync(p => p.ProductId == request.ProductId);
-                if (!productExists)
+                if (!await _context.Products.AnyAsync(p => p.ProductId == request.ProductId))
                     return BadRequest(new { message = $"Product ID '{request.ProductId}' does not exist." });
 
-                var shelfExists = await _context.Shelves.AnyAsync(s => s.ShelfId == request.ShelfId);
-                if (!shelfExists)
+                if (!await _context.Shelves.AnyAsync(s => s.ShelfId == request.ShelfId))
                     return BadRequest(new { message = $"Shelf ID '{request.ShelfId}' does not exist." });
 
-                var staffExists = await _context.Staffs.AnyAsync(s => s.StaffId == request.AssignedTo);
-                if (!staffExists)
+                if (!await _context.Staffs.AnyAsync(s => s.StaffId == request.AssignedTo))
                     return BadRequest(new { message = $"Staff ID '{request.AssignedTo}' does not exist." });
 
                 _mapper.Map(request, existing);
                 await _repository.UpdateAsync(existing);
-                return NoContent();
+
+                return Ok(new { message = $"Restock task ID {id} updated successfully." });
             }
             catch (DbUpdateException ex)
             {
@@ -140,10 +145,10 @@ namespace ShelfSense.WebAPI.Controllers
             }
         }
 
+        // 🔐 Manager-only with confirmation
+        [Authorize(Roles = "manager")]
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(
-            long id,
-            [FromHeader(Name = "X-Confirm-Delete")] bool confirm = false)
+        public async Task<IActionResult> Delete(long id, [FromHeader(Name = "X-Confirm-Delete")] bool confirm = false)
         {
             if (!confirm)
                 return BadRequest(new
@@ -158,7 +163,7 @@ namespace ShelfSense.WebAPI.Controllers
                     return NotFound(new { message = $"Task ID {id} not found." });
 
                 await _repository.DeleteAsync(id);
-                return NoContent();
+                return Ok(new { message = $"Restock task ID {id} deleted successfully." });
             }
             catch (Exception ex)
             {
