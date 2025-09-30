@@ -12,8 +12,8 @@ using ShelfSense.Infrastructure.Data;
 namespace ShelfSense.Infrastructure.Migrations
 {
     [DbContext(typeof(ShelfSenseDbContext))]
-    [Migration("20250928085506_AddedIdentityJwts")]
-    partial class AddedIdentityJwts
+    [Migration("20250929060126_RT")]
+    partial class RT
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -511,6 +511,13 @@ namespace ShelfSense.Infrastructure.Migrations
 
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("bit");
+
+                    b.Property<string>("RefreshToken")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("RefreshTokenExpiryTime")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("RoleType")
                         .IsRequired()

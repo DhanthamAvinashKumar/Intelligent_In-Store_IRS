@@ -105,10 +105,12 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using ShelfSense.Application.Interfaces;
 using ShelfSense.Application.Mapping;
 using ShelfSense.Application.Services.Auth;
+using ShelfSense.Application.Settings;
 using ShelfSense.Domain.Identity;
 using ShelfSense.Infrastructure.Data;
 using ShelfSense.Infrastructure.Repositories;
@@ -207,6 +209,13 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 });
+
+
+// Refresh toeken settings
+builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IOptions<JwtSettings>>().Value);
+
 
 var app = builder.Build();
 

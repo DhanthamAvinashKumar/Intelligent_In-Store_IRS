@@ -1,4 +1,6 @@
-﻿using AutoMapper;
+﻿ 
+
+using AutoMapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,6 +13,7 @@ namespace ShelfSense.WebAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class RestockTaskController : ControllerBase
     {
         private readonly IRestockTaskRepository _repository;
@@ -24,151 +27,134 @@ namespace ShelfSense.WebAPI.Controllers
             _context = context;
         }
 
-        // 🔓 Accessible to all authenticated users
-        [Authorize]
+        // 🔍 Get all tasks
         [HttpGet]
-        public IActionResult GetAll()
+        public async Task<IActionResult> GetAll()
         {
-            try
-            {
-                var tasks = _repository.GetAll().ToList();
-                var response = _mapper.Map<List<RestockTaskResponse>>(tasks);
-                return Ok(new { message = "Restock tasks retrieved successfully.", data = response });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error retrieving restock tasks.", details = ex.Message });
-            }
+            var tasks = await _repository.GetAll().ToListAsync();
+            var response = _mapper.Map<List<RestockTaskResponse>>(tasks);
+            return Ok(new { message = "Restock tasks retrieved successfully.", data = response });
         }
 
-        [Authorize]
+        // 🔍 Get task by ID
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(long id)
         {
-            try
-            {
-                var task = await _repository.GetByIdAsync(id);
-                if (task == null)
-                    return NotFound(new { message = $"Task ID {id} not found." });
+            var task = await _repository.GetByIdAsync(id);
+            if (task == null)
+                return NotFound(new { message = $"Restock task ID {id} not found." });
 
-                var response = _mapper.Map<RestockTaskResponse>(task);
-                return Ok(new { message = "Restock task retrieved successfully.", data = response });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error retrieving the restock task.", details = ex.Message });
-            }
+            var response = _mapper.Map<RestockTaskResponse>(task);
+            return Ok(response);
         }
 
-        // 🔐 Manager-only
+        // 📝 Create new restock task and log inventory report
         [Authorize(Roles = "manager")]
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] RestockTaskCreateRequest request)
         {
             if (!ModelState.IsValid)
-                return BadRequest(new { message = "Validation failed.", errors = ModelState });
+                return BadRequest(ModelState);
 
-            try
-            {
-                // Validate foreign keys
-                if (!await _context.ReplenishmentAlerts.AnyAsync(a => a.AlertId == request.AlertId))
-                    return BadRequest(new { message = $"Alert ID '{request.AlertId}' does not exist." });
+            if (!await _context.Products.AnyAsync(p => p.ProductId == request.ProductId))
+                return BadRequest(new { message = $"Product ID '{request.ProductId}' does not exist." });
 
-                if (!await _context.Products.AnyAsync(p => p.ProductId == request.ProductId))
-                    return BadRequest(new { message = $"Product ID '{request.ProductId}' does not exist." });
+            if (!await _context.Shelves.AnyAsync(s => s.ShelfId == request.ShelfId))
+                return BadRequest(new { message = $"Shelf ID '{request.ShelfId}' does not exist." });
 
-                if (!await _context.Shelves.AnyAsync(s => s.ShelfId == request.ShelfId))
-                    return BadRequest(new { message = $"Shelf ID '{request.ShelfId}' does not exist." });
+            if (!await _context.Staffs.AnyAsync(st => st.StaffId == request.AssignedTo))
+                return BadRequest(new { message = $"Staff ID '{request.AssignedTo}' does not exist." });
 
-                if (!await _context.Staffs.AnyAsync(s => s.StaffId == request.AssignedTo))
-                    return BadRequest(new { message = $"Staff ID '{request.AssignedTo}' does not exist." });
+            var entity = _mapper.Map<RestockTask>(request);
+            entity.Status = "pending";
+            entity.AssignedAt = DateTime.UtcNow;
 
-                var entity = _mapper.Map<RestockTask>(request);
-                await _repository.AddAsync(entity);
+            await _repository.AddAsync(entity);
 
-                var response = _mapper.Map<RestockTaskResponse>(entity);
-                return CreatedAtAction(nameof(GetById), new { id = response.TaskId }, new
-                {
-                    message = "Restock task created successfully.",
-                    data = response
-                });
-            }
-            catch (DbUpdateException ex)
-            {
-                return Conflict(new { message = "Database error while creating restock task.", details = ex.InnerException?.Message ?? ex.Message });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Unexpected error while creating restock task.", details = ex.Message });
-            }
+            // 🧠 Log to InventoryReport
+            await LogInventoryReportAsync(entity.ProductId, entity.ShelfId, null, true);
+
+            var response = _mapper.Map<RestockTaskResponse>(entity);
+            return CreatedAtAction(nameof(GetById), new { id = response.TaskId }, response);
         }
 
-        // 🔐 Manager-only
+        // ✅ Mark task as completed and log inventory report
         [Authorize(Roles = "manager")]
-        [HttpPut("{id}")]
-        public async Task<IActionResult> Update(long id, [FromBody] RestockTaskCreateRequest request)
+        [HttpPut("{id}/complete")]
+        public async Task<IActionResult> CompleteTask(long id, [FromBody] int quantityRestocked)
         {
-            if (!ModelState.IsValid)
-                return BadRequest(new { message = "Validation failed.", errors = ModelState });
+            var task = await _repository.GetByIdAsync(id);
+            if (task == null)
+                return NotFound(new { message = $"Restock task ID {id} not found." });
 
-            try
+            if (task.Status == "completed")
+                return BadRequest(new { message = "Task is already marked as completed." });
+
+            task.Status = "completed";
+            task.CompletedAt = DateTime.UtcNow;
+            //task.QuantityRestocked = quantityRestocked;
+
+            var shelf = await _context.ProductShelves
+                .FirstOrDefaultAsync(ps => ps.ProductId == task.ProductId && ps.ShelfId == task.ShelfId);
+
+            if (shelf != null)
             {
-                var existing = await _repository.GetByIdAsync(id);
-                if (existing == null)
-                    return NotFound(new { message = $"Task ID {id} not found." });
-
-                // Validate foreign keys
-                if (!await _context.ReplenishmentAlerts.AnyAsync(a => a.AlertId == request.AlertId))
-                    return BadRequest(new { message = $"Alert ID '{request.AlertId}' does not exist." });
-
-                if (!await _context.Products.AnyAsync(p => p.ProductId == request.ProductId))
-                    return BadRequest(new { message = $"Product ID '{request.ProductId}' does not exist." });
-
-                if (!await _context.Shelves.AnyAsync(s => s.ShelfId == request.ShelfId))
-                    return BadRequest(new { message = $"Shelf ID '{request.ShelfId}' does not exist." });
-
-                if (!await _context.Staffs.AnyAsync(s => s.StaffId == request.AssignedTo))
-                    return BadRequest(new { message = $"Staff ID '{request.AssignedTo}' does not exist." });
-
-                _mapper.Map(request, existing);
-                await _repository.UpdateAsync(existing);
-
-                return Ok(new { message = $"Restock task ID {id} updated successfully." });
+                shelf.Quantity += quantityRestocked;
+                _context.ProductShelves.Update(shelf);
             }
-            catch (DbUpdateException ex)
+
+            await _repository.UpdateAsync(task);
+
+            // 🧠 Log to InventoryReport
+            await LogInventoryReportAsync(task.ProductId, task.ShelfId, quantityRestocked, true);
+
+            return Ok(new { message = "Restock task marked as completed." });
+        }
+
+        // 🔧 Internal method to log inventory report
+        private async Task LogInventoryReportAsync(long productId, long shelfId, int? quantityRestocked, bool alertTriggered)
+        {
+            var shelfState = await _context.ProductShelves
+                .FirstOrDefaultAsync(ps => ps.ProductId == productId && ps.ShelfId == shelfId);
+
+            if (shelfState == null) return;
+
+            bool reportExists = await _context.InventoryReports.AnyAsync(r =>
+                r.ProductId == productId &&
+                r.ShelfId == shelfId &&
+                r.ReportDate == DateTime.Today);
+
+            if (!reportExists)
             {
-                return Conflict(new { message = "Database error while updating restock task.", details = ex.InnerException?.Message ?? ex.Message });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Unexpected error while updating restock task.", details = ex.Message });
+                var report = new InventoryReport
+                {
+                    ProductId = productId,
+                    ShelfId = shelfId,
+                    ReportDate = DateTime.Today,
+                    QuantityOnShelf = shelfState.Quantity,
+                    QuantityRestocked = quantityRestocked,
+                    AlertTriggered = alertTriggered,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.InventoryReports.Add(report);
+                await _context.SaveChangesAsync();
             }
         }
 
-        // 🔐 Manager-only with confirmation
+        // 🗑️ Delete task
         [Authorize(Roles = "manager")]
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(long id, [FromHeader(Name = "X-Confirm-Delete")] bool confirm = false)
+        public async Task<IActionResult> Delete(long id)
         {
-            if (!confirm)
-                return BadRequest(new
-                {
-                    message = "Deletion not confirmed. Please add header 'X-Confirm-Delete: true' to proceed."
-                });
+            var existing = await _repository.GetByIdAsync(id);
+            if (existing == null)
+                return NotFound(new { message = $"Restock task ID {id} not found." });
 
-            try
-            {
-                var existing = await _repository.GetByIdAsync(id);
-                if (existing == null)
-                    return NotFound(new { message = $"Task ID {id} not found." });
-
-                await _repository.DeleteAsync(id);
-                return Ok(new { message = $"Restock task ID {id} deleted successfully." });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error deleting restock task.", details = ex.Message });
-            }
+            await _repository.DeleteAsync(id);
+            return NoContent();
         }
+
+        
     }
 }

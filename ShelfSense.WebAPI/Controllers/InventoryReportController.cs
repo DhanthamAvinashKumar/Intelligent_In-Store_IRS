@@ -25,13 +25,13 @@ namespace ShelfSense.WebAPI.Controllers
             _context = context;
         }
 
+        // 🔍 Get all reports with enrichment
         [HttpGet]
         public async Task<IActionResult> GetAll()
         {
             try
             {
                 var reports = await _repository.GetAll().ToListAsync();
-
                 var enriched = new List<InventoryReportResponse>();
 
                 foreach (var report in reports)
@@ -62,6 +62,10 @@ namespace ShelfSense.WebAPI.Controllers
             }
         }
 
+      
+
+
+        // 🔍 Get single report by ID
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(long id)
         {
@@ -90,7 +94,8 @@ namespace ShelfSense.WebAPI.Controllers
             }
         }
 
-        [Authorize(Roles = "manager")] // 🔐 Only managers can create reports
+        // 📝 Create report manually or from restock logic
+        [Authorize(Roles = "manager")]
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] InventoryReportCreateRequest request)
         {
@@ -99,13 +104,19 @@ namespace ShelfSense.WebAPI.Controllers
 
             try
             {
-                var productExists = await _context.Products.AnyAsync(p => p.ProductId == request.ProductId);
-                if (!productExists)
+                if (!await _context.Products.AnyAsync(p => p.ProductId == request.ProductId))
                     return BadRequest(new { message = $"Product ID '{request.ProductId}' does not exist." });
 
-                var shelfExists = await _context.Shelves.AnyAsync(s => s.ShelfId == request.ShelfId);
-                if (!shelfExists)
+                if (!await _context.Shelves.AnyAsync(s => s.ShelfId == request.ShelfId))
                     return BadRequest(new { message = $"Shelf ID '{request.ShelfId}' does not exist." });
+
+                bool exists = await _context.InventoryReports.AnyAsync(r =>
+                    r.ProductId == request.ProductId &&
+                    r.ShelfId == request.ShelfId &&
+                    r.ReportDate == request.ReportDate.Date);
+
+                if (exists)
+                    return Conflict(new { message = "Inventory report for this product, shelf, and date already exists." });
 
                 var entity = _mapper.Map<InventoryReport>(request);
                 entity.CreatedAt = DateTime.UtcNow;
@@ -125,29 +136,14 @@ namespace ShelfSense.WebAPI.Controllers
 
                 return CreatedAtAction(nameof(GetById), new { id = response.ReportId }, response);
             }
-            catch (DbUpdateException ex)
-            {
-                if (ex.InnerException?.Message.Contains("IX_InventoryReport_ProductId_ShelfId_ReportDate") == true)
-                {
-                    return Conflict(new
-                    {
-                        message = "Inventory report for this product, shelf, and date already exists."
-                    });
-                }
-
-                return Conflict(new
-                {
-                    message = "Database error while creating inventory report.",
-                    details = ex.InnerException?.Message ?? ex.Message
-                });
-            }
             catch (Exception ex)
             {
                 return StatusCode(500, new { message = "Unexpected error while creating inventory report.", details = ex.Message });
             }
         }
 
-        [Authorize(Roles = "manager")] // 🔐 Only managers can update reports
+        // ✏️ Update report
+        [Authorize(Roles = "manager")]
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(long id, [FromBody] InventoryReportCreateRequest request)
         {
@@ -160,33 +156,15 @@ namespace ShelfSense.WebAPI.Controllers
                 if (existing == null)
                     return NotFound(new { message = $"Report ID {id} not found." });
 
-                var productExists = await _context.Products.AnyAsync(p => p.ProductId == request.ProductId);
-                if (!productExists)
+                if (!await _context.Products.AnyAsync(p => p.ProductId == request.ProductId))
                     return BadRequest(new { message = $"Product ID '{request.ProductId}' does not exist." });
 
-                var shelfExists = await _context.Shelves.AnyAsync(s => s.ShelfId == request.ShelfId);
-                if (!shelfExists)
+                if (!await _context.Shelves.AnyAsync(s => s.ShelfId == request.ShelfId))
                     return BadRequest(new { message = $"Shelf ID '{request.ShelfId}' does not exist." });
 
                 _mapper.Map(request, existing);
                 await _repository.UpdateAsync(existing);
                 return NoContent();
-            }
-            catch (DbUpdateException ex)
-            {
-                if (ex.InnerException?.Message.Contains("IX_InventoryReport_ProductId_ShelfId_ReportDate") == true)
-                {
-                    return Conflict(new
-                    {
-                        message = "Inventory report for this product, shelf, and date already exists."
-                    });
-                }
-
-                return Conflict(new
-                {
-                    message = "Database error while updating inventory report.",
-                    details = ex.InnerException?.Message ?? ex.Message
-                });
             }
             catch (Exception ex)
             {
@@ -194,7 +172,8 @@ namespace ShelfSense.WebAPI.Controllers
             }
         }
 
-        [Authorize(Roles = "manager")] // 🔐 Only managers can delete reports
+        // 🗑️ Delete report
+        [Authorize(Roles = "manager")]
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(long id)
         {
@@ -212,5 +191,83 @@ namespace ShelfSense.WebAPI.Controllers
                 return StatusCode(500, new { message = "Error deleting inventory report.", details = ex.Message });
             }
         }
+
+        [HttpGet("inventory-summary")]
+        public async Task<IActionResult> GetInventorySummary()
+        {
+            try
+            {
+                var productShelves = await _context.ProductShelves
+                    .Include(ps => ps.Product)
+                    .Include(ps => ps.Shelf)
+                    .ToListAsync();
+
+                var response = new List<InventoryReportCreateRequest>();
+
+                foreach (var ps in productShelves)
+                {
+                    var latestRestock = await _context.RestockTasks
+                        .Where(rt => rt.ProductId == ps.ProductId && rt.ShelfId == ps.ShelfId && rt.Status == "completed")
+                        .OrderByDescending(rt => rt.CompletedAt)
+                        .FirstOrDefaultAsync();
+
+                    var latestStockRequest = await _context.StockRequests
+                        .Where(sr => sr.ProductId == ps.ProductId && sr.StoreId == sr.StoreId)
+                        .OrderByDescending(sr => sr.RequestDate)
+                        .FirstOrDefaultAsync();
+
+
+                    var alertExists = await _context.ReplenishmentAlerts
+                        .AnyAsync(ra => ra.ProductId == ps.ProductId && ra.ShelfId == ps.ShelfId && ra.Status != "closed");
+
+                    var today = DateTime.Today;
+
+                    // Check if report already exists
+                    bool exists = await _context.InventoryReports.AnyAsync(r =>
+                        r.ProductId == ps.ProductId &&
+                        r.ShelfId == ps.ShelfId &&
+                        r.ReportDate == today);
+
+                    if (!exists)
+                    {
+                        var report = new InventoryReport
+                        {
+                            ProductId = ps.ProductId,
+                            ShelfId = ps.ShelfId,
+                            ReportDate = today,
+                            QuantityOnShelf = ps.Quantity,
+                            QuantityRestocked = latestStockRequest?.Quantity,
+                            AlertTriggered = alertExists,
+                            CreatedAt = DateTime.UtcNow
+                        };
+
+                        _context.InventoryReports.Add(report);
+                    }
+
+                    response.Add(new InventoryReportCreateRequest
+                    {
+                        ProductId = ps.ProductId,
+                        ShelfId = ps.ShelfId,
+                        ReportDate = today,
+                        QuantityOnShelf = ps.Quantity,
+                        QuantityRestocked = latestStockRequest?.Quantity,
+                        AlertTriggered = alertExists
+                    });
+                }
+
+                await _context.SaveChangesAsync(); // Persist all new reports
+
+                return Ok(new
+                {
+                    message = "Dashboard inventory summary retrieved and stored successfully.",
+                    data = response
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error generating and storing dashboard summary.", details = ex.Message });
+            }
+        }
+
     }
 }

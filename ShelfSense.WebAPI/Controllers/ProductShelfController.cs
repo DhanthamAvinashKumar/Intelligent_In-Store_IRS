@@ -162,5 +162,94 @@ namespace ShelfSense.WebAPI.Controllers
 
             return Ok(new { message = $"ProductShelf with ID {id} deleted successfully." });
         }
+
+        // 🔍 Predict stock depletion and generate alerts
+        [Authorize]
+        [HttpGet("predict-depletion")]
+        public async Task<IActionResult> PredictDepletion()
+        {
+            var velocityData = await (
+                from sale in _dbContext.SalesHistories
+                group sale by new { sale.ProductId, SaleDay = sale.SaleTime.Date } into daily
+                select new
+                {
+                    daily.Key.ProductId,
+                    DailySales = daily.Sum(x => x.Quantity)
+                }
+            ).ToListAsync();
+
+            var salesVelocity = velocityData
+                .GroupBy(x => x.ProductId)
+                .Select(g => new
+                {
+                    ProductId = g.Key,
+                    SalesVelocity = g.Average(x => x.DailySales)
+                }).ToDictionary(x => x.ProductId, x => x.SalesVelocity);
+
+            var shelves = await _dbContext.ProductShelves.ToListAsync();
+            var alertsToInsert = new List<ReplenishmentAlert>();
+            var predictions = new List<StockDepletionPredictionDto>();
+
+            foreach (var ps in shelves)
+            {
+                if (!salesVelocity.ContainsKey(ps.ProductId)) continue;
+
+                var velocity = salesVelocity[ps.ProductId];
+                var daysToDepletion = velocity > 0 ? Math.Round(ps.Quantity / velocity, 2) : double.MaxValue;
+                //var expectedDate = velocity > 0 ? DateTime.Today.AddDays(Math.Round(ps.Quantity / velocity)) : null;
+                DateTime? expectedDate = velocity > 0
+                ? DateTime.Today.AddDays(Math.Round(ps.Quantity / velocity))
+                : null;
+                var isLowStock = daysToDepletion < 5;
+
+                predictions.Add(new StockDepletionPredictionDto
+                {
+                    ProductId = ps.ProductId,
+                    ShelfId = ps.ShelfId,
+                    Quantity = ps.Quantity,
+                    SalesVelocity = velocity,
+                    DaysToDepletion = daysToDepletion,
+                    ExpectedDepletionDate = expectedDate,
+                    IsLowStock = isLowStock
+                });
+
+                if (isLowStock)
+                {
+                    var urgency = daysToDepletion switch
+                    {
+                        <= 1 => "critical",
+                        <= 2 => "high",
+                        <= 4 => "medium",
+                        _ => "low"
+                    };
+
+                    var exists = await _dbContext.ReplenishmentAlerts.AnyAsync(a =>
+                        a.ProductId == ps.ProductId &&
+                        a.ShelfId == ps.ShelfId &&
+                        a.Status == "open");
+
+                    if (!exists)
+                    {
+                        alertsToInsert.Add(new ReplenishmentAlert
+                        {
+                            ProductId = ps.ProductId,
+                            ShelfId = ps.ShelfId,
+                            PredictedDepletionDate = expectedDate ?? DateTime.Today,
+                            UrgencyLevel = urgency,
+                            Status = "open",
+                            CreatedAt = DateTime.Now
+                        });
+                    }
+                }
+            }
+
+            if (alertsToInsert.Any())
+            {
+                await _dbContext.ReplenishmentAlerts.AddRangeAsync(alertsToInsert);
+                await _dbContext.SaveChangesAsync();
+            }
+
+            return Ok(predictions);
+        }
     }
 }
