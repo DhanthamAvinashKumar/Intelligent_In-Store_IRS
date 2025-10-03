@@ -21,6 +21,8 @@ public class StockRequest
     public string DeliveryStatus { get; set; } = "requested";
 
     public DateTime? EstimatedTimeOfArrival { get; set; }
+    public DateTime? DeliveredAt { get; set; }
+
 
     // Navigation
     public Store? Store { get; set; }

@@ -26,21 +26,35 @@ namespace ShelfSense.WebAPI.Controllers
         [HttpGet]
         public IActionResult GetAll()
         {
-            var shelves = _repository.GetAll().ToList();
-            var response = _mapper.Map<List<ShelfResponse>>(shelves);
-            return Ok(new { message = "Shelves retrieved successfully.", data = response });
+            try
+            {
+                var shelves = _repository.GetAll().ToList();
+                var response = _mapper.Map<List<ShelfResponse>>(shelves);
+                return Ok(new { message = "Shelves retrieved successfully.", data = response });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error retrieving shelves.", details = ex.Message });
+            }
         }
 
         [Authorize(Roles = "manager,staff")]
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(long id)
         {
-            var shelf = await _repository.GetByIdAsync(id);
-            if (shelf == null)
-                return NotFound(new { message = $"Shelf with ID {id} not found." });
+            try
+            {
+                var shelf = await _repository.GetByIdAsync(id);
+                if (shelf == null)
+                    return NotFound(new { message = $"Shelf with ID {id} not found." });
 
-            var response = _mapper.Map<ShelfResponse>(shelf);
-            return Ok(new { message = "Shelf retrieved successfully.", data = response });
+                var response = _mapper.Map<ShelfResponse>(shelf);
+                return Ok(new { message = "Shelf retrieved successfully.", data = response });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error retrieving shelf {id}.", details = ex.Message });
+            }
         }
 
         // 🔐 Manager-only
@@ -48,33 +62,40 @@ namespace ShelfSense.WebAPI.Controllers
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] ShelfCreateRequest request)
         {
-            if (request == null)
-                return BadRequest(new { message = "Request body cannot be null." });
-
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
-            var shelf = _mapper.Map<Shelf>(request);
-
             try
             {
-                await _repository.AddAsync(shelf);
-            }
-            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("IX_Shelves_ShelfCode") == true)
-            {
-                return Conflict(new { message = $"Shelf code '{request.ShelfCode}' already exists." });
-            }
-            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FK_Shelves_Stores_StoreId") == true)
-            {
-                return BadRequest(new { message = $"Store ID '{request.StoreId}' does not exist." });
-            }
+                if (request == null)
+                    return BadRequest(new { message = "Request body cannot be null." });
 
-            var response = _mapper.Map<ShelfResponse>(shelf);
-            return CreatedAtAction(nameof(GetById), new { id = response.ShelfId }, new
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
+
+                var shelf = _mapper.Map<Shelf>(request);
+
+                try
+                {
+                    await _repository.AddAsync(shelf);
+                }
+                catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("IX_Shelves_ShelfCode") == true)
+                {
+                    return Conflict(new { message = $"Shelf code '{request.ShelfCode}' already exists." });
+                }
+                catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FK_Shelves_Stores_StoreId") == true)
+                {
+                    return BadRequest(new { message = $"Store ID '{request.StoreId}' does not exist." });
+                }
+
+                var response = _mapper.Map<ShelfResponse>(shelf);
+                return CreatedAtAction(nameof(GetById), new { id = response.ShelfId }, new
+                {
+                    message = "Shelf created successfully.",
+                    data = response
+                });
+            }
+            catch (Exception ex)
             {
-                message = "Shelf created successfully.",
-                data = response
-            });
+                return StatusCode(500, new { message = "Error creating shelf.", details = ex.Message });
+            }
         }
 
         // 🔐 Manager-only
@@ -82,34 +103,41 @@ namespace ShelfSense.WebAPI.Controllers
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(long id, [FromBody] ShelfCreateRequest request)
         {
-            if (request == null)
-                return BadRequest(new { message = "Request body cannot be null." });
-
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
-            var existing = await _repository.GetByIdAsync(id);
-            if (existing == null)
-                return NotFound(new { message = $"Shelf with ID {id} not found." });
-
-            existing.ShelfCode = request.ShelfCode;
-            existing.StoreId = request.StoreId;
-            existing.LocationDescription = request.LocationDescription;
-
             try
             {
-                await _repository.UpdateAsync(existing);
-            }
-            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("IX_Shelves_ShelfCode") == true)
-            {
-                return Conflict(new { message = $"Shelf code '{request.ShelfCode}' already exists." });
-            }
-            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FK_Shelves_Stores_StoreId") == true)
-            {
-                return BadRequest(new { message = $"Store ID '{request.StoreId}' does not exist." });
-            }
+                if (request == null)
+                    return BadRequest(new { message = "Request body cannot be null." });
 
-            return Ok(new { message = $"Shelf ID {id} updated successfully." });
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
+
+                var existing = await _repository.GetByIdAsync(id);
+                if (existing == null)
+                    return NotFound(new { message = $"Shelf with ID {id} not found." });
+
+                existing.ShelfCode = request.ShelfCode;
+                existing.StoreId = request.StoreId;
+                existing.LocationDescription = request.LocationDescription;
+
+                try
+                {
+                    await _repository.UpdateAsync(existing);
+                }
+                catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("IX_Shelves_ShelfCode") == true)
+                {
+                    return Conflict(new { message = $"Shelf code '{request.ShelfCode}' already exists." });
+                }
+                catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FK_Shelves_Stores_StoreId") == true)
+                {
+                    return BadRequest(new { message = $"Store ID '{request.StoreId}' does not exist." });
+                }
+
+                return Ok(new { message = $"Shelf ID {id} updated successfully." });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error updating shelf {id}.", details = ex.Message });
+            }
         }
 
         // 🔐 Manager-only with confirmation
@@ -117,29 +145,38 @@ namespace ShelfSense.WebAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(long id, [FromHeader(Name = "X-Confirm-Delete")] bool confirm = false)
         {
-            if (!confirm)
-                return BadRequest(new
-                {
-                    message = "Deletion not confirmed. Please add header 'X-Confirm-Delete: true' to proceed."
-                });
-
-            var existing = await _repository.GetByIdAsync(id);
-            if (existing == null)
-                return NotFound(new { message = $"Shelf with ID {id} not found." });
-
             try
             {
-                await _repository.DeleteAsync(id);
-            }
-            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("REFERENCE constraint") == true)
-            {
-                return Conflict(new
+                if (!confirm)
                 {
-                    message = $"Cannot delete Shelf ID {id} because it is referenced in other records (e.g., ProductShelf or ReplenishmentAlert)."
-                });
-            }
+                    return BadRequest(new
+                    {
+                        message = "Deletion not confirmed. Please add header 'X-Confirm-Delete: true' to proceed."
+                    });
+                }
 
-            return Ok(new { message = $"Shelf ID {id} deleted successfully." });
+                var existing = await _repository.GetByIdAsync(id);
+                if (existing == null)
+                    return NotFound(new { message = $"Shelf with ID {id} not found." });
+
+                try
+                {
+                    await _repository.DeleteAsync(id);
+                }
+                catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("REFERENCE constraint") == true)
+                {
+                    return Conflict(new
+                    {
+                        message = $"Cannot delete Shelf ID {id} because it is referenced in other records (e.g., ProductShelf or ReplenishmentAlert)."
+                    });
+                }
+
+                return Ok(new { message = $"Shelf ID {id} deleted successfully." });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error deleting shelf {id}.", details = ex.Message });
+            }
         }
     }
 }

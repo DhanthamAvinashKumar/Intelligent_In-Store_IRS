@@ -233,6 +233,10 @@ namespace ShelfSense.Infrastructure.Data
         public DbSet<InventoryReport> InventoryReports { get; set; }
         public DbSet<StockRequest> StockRequests { get; set; }
         public DbSet<SalesHistory> SalesHistories { get; set; }
+        public DbSet<DeliveredStockRequest> DeliveredStockRequests { get; set; }
+
+        public DbSet<ClosedReplenishmentAlert> ClosedReplenishmentAlerts { get; set; }
+        public DbSet<CancelledStockRequest> CancelledStockRequests { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             // Category

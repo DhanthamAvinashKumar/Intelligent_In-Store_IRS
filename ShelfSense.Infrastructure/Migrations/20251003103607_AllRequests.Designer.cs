@@ -12,8 +12,8 @@ using ShelfSense.Infrastructure.Data;
 namespace ShelfSense.Infrastructure.Migrations
 {
     [DbContext(typeof(ShelfSenseDbContext))]
-    [Migration("20250929070853_AllTables")]
-    partial class AllTables
+    [Migration("20251003103607_AllRequests")]
+    partial class AllRequests
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -24,6 +24,45 @@ namespace ShelfSense.Infrastructure.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+
+            modelBuilder.Entity("DeliveredStockRequest", b =>
+                {
+                    b.Property<long>("DeliveredRequestId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("DeliveredRequestId"));
+
+                    b.Property<long?>("AlertId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("DeliveredAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<long>("OriginalRequestId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ProductId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<long>("StoreId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("DeliveredRequestId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("StoreId");
+
+                    b.ToTable("DeliveredStockRequests");
+                });
 
             modelBuilder.Entity("InventoryReport", b =>
                 {
@@ -246,6 +285,9 @@ namespace ShelfSense.Infrastructure.Migrations
                         .HasColumnType("datetime2")
                         .HasDefaultValueSql("GETDATE()");
 
+                    b.Property<string>("FulfillmentNote")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("PredictedDepletionDate")
                         .HasColumnType("datetime2");
 
@@ -396,6 +438,48 @@ namespace ShelfSense.Infrastructure.Migrations
                     b.ToTable("Shelves");
                 });
 
+            modelBuilder.Entity("ShelfSense.Domain.Entities.CancelledStockRequest", b =>
+                {
+                    b.Property<long>("ArchiveId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("ArchiveId"));
+
+                    b.Property<int?>("AlertId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CancellationReason")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CancelledAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DeliveryStatus")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<long>("OriginalRequestId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ProductId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("RequestDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("StoreId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("ArchiveId");
+
+                    b.ToTable("CancelledStockRequests");
+                });
+
             modelBuilder.Entity("ShelfSense.Domain.Entities.Category", b =>
                 {
                     b.Property<long>("CategoryId")
@@ -424,6 +508,55 @@ namespace ShelfSense.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("Category");
+                });
+
+            modelBuilder.Entity("ShelfSense.Domain.Entities.ClosedReplenishmentAlert", b =>
+                {
+                    b.Property<long>("ClosedAlertId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("ClosedAlertId"));
+
+                    b.Property<DateTime>("ClosedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FulfillmentNote")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<long>("OriginalAlertId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("PredictedDepletionDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("ProductId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ShelfId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("UrgencyLevel")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("ClosedAlertId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("ShelfId");
+
+                    b.ToTable("ClosedReplenishmentAlerts");
                 });
 
             modelBuilder.Entity("ShelfSense.Domain.Entities.Product", b =>
@@ -495,6 +628,9 @@ namespace ShelfSense.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("LockoutEnd")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("Name")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("NormalizedEmail")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
@@ -513,10 +649,9 @@ namespace ShelfSense.Infrastructure.Migrations
                         .HasColumnType("bit");
 
                     b.Property<string>("RefreshToken")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime>("RefreshTokenExpiryTime")
+                    b.Property<DateTime?>("RefreshTokenExpiryTime")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("RoleType")
@@ -526,9 +661,8 @@ namespace ShelfSense.Infrastructure.Migrations
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("StoreId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<long?>("StoreId")
+                        .HasColumnType("bigint");
 
                     b.Property<bool>("TwoFactorEnabled")
                         .HasColumnType("bit");
@@ -605,6 +739,9 @@ namespace ShelfSense.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RequestId"));
 
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("DeliveryStatus")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -678,6 +815,25 @@ namespace ShelfSense.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("Stores");
+                });
+
+            modelBuilder.Entity("DeliveredStockRequest", b =>
+                {
+                    b.HasOne("ShelfSense.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Store");
                 });
 
             modelBuilder.Entity("InventoryReport", b =>
@@ -859,6 +1015,25 @@ namespace ShelfSense.Infrastructure.Migrations
                     b.Navigation("Category");
 
                     b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("ShelfSense.Domain.Entities.ClosedReplenishmentAlert", b =>
+                {
+                    b.HasOne("ShelfSense.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Shelf", "Shelf")
+                        .WithMany()
+                        .HasForeignKey("ShelfId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Shelf");
                 });
 
             modelBuilder.Entity("ShelfSense.Domain.Entities.Product", b =>

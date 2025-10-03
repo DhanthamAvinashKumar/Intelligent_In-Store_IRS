@@ -26,21 +26,35 @@ namespace ShelfSense.WebAPI.Controllers
         [HttpGet]
         public IActionResult GetAll()
         {
-            var stores = _repository.GetAll().ToList();
-            var response = _mapper.Map<List<StoreResponse>>(stores);
-            return Ok(new { message = "Stores retrieved successfully.", data = response });
+            try
+            {
+                var stores = _repository.GetAll().ToList();
+                var response = _mapper.Map<List<StoreResponse>>(stores);
+                return Ok(new { message = "Stores retrieved successfully.", data = response });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error retrieving stores.", details = ex.Message });
+            }
         }
 
         [Authorize(Roles = "manager,staff")]
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(long id)
         {
-            var store = await _repository.GetByIdAsync(id);
-            if (store == null)
-                return NotFound(new { message = $"Store with ID {id} not found." });
+            try
+            {
+                var store = await _repository.GetByIdAsync(id);
+                if (store == null)
+                    return NotFound(new { message = $"Store with ID {id} not found." });
 
-            var response = _mapper.Map<StoreResponse>(store);
-            return Ok(new { message = "Store retrieved successfully.", data = response });
+                var response = _mapper.Map<StoreResponse>(store);
+                return Ok(new { message = "Store retrieved successfully.", data = response });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error retrieving store {id}.", details = ex.Message });
+            }
         }
 
         // 🔐 Manager-only
@@ -59,18 +73,21 @@ namespace ShelfSense.WebAPI.Controllers
             try
             {
                 await _repository.AddAsync(store);
+                var response = _mapper.Map<StoreResponse>(store);
+                return CreatedAtAction(nameof(GetById), new { id = response.StoreId }, new
+                {
+                    message = "Store created successfully.",
+                    data = response
+                });
             }
             catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("IX_Stores_StoreName") == true)
             {
                 return Conflict(new { message = $"Store name '{request.StoreName}' already exists." });
             }
-
-            var response = _mapper.Map<StoreResponse>(store);
-            return CreatedAtAction(nameof(GetById), new { id = response.StoreId }, new
+            catch (Exception ex)
             {
-                message = "Store created successfully.",
-                data = response
-            });
+                return StatusCode(500, new { message = "Error creating store.", details = ex.Message });
+            }
         }
 
         // 🔐 Manager-only
@@ -84,26 +101,30 @@ namespace ShelfSense.WebAPI.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var existing = await _repository.GetByIdAsync(id);
-            if (existing == null)
-                return NotFound(new { message = $"Store with ID {id} not found." });
-
-            existing.StoreName = request.StoreName;
-            existing.Address = request.Address;
-            existing.City = request.City;
-            existing.State = request.State;
-            existing.PostalCode = request.PostalCode;
-
             try
             {
+                var existing = await _repository.GetByIdAsync(id);
+                if (existing == null)
+                    return NotFound(new { message = $"Store with ID {id} not found." });
+
+                existing.StoreName = request.StoreName;
+                existing.Address = request.Address;
+                existing.City = request.City;
+                existing.State = request.State;
+                existing.PostalCode = request.PostalCode;
+
                 await _repository.UpdateAsync(existing);
+
+                return Ok(new { message = $"Store ID {id} updated successfully." });
             }
             catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("IX_Stores_StoreName") == true)
             {
                 return Conflict(new { message = $"Store name '{request.StoreName}' already exists." });
             }
-
-            return Ok(new { message = $"Store ID {id} updated successfully." });
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error updating store {id}.", details = ex.Message });
+            }
         }
 
         // 🔐 Manager-only with confirmation
@@ -117,13 +138,15 @@ namespace ShelfSense.WebAPI.Controllers
                     message = "Deletion not confirmed. Please add header 'X-Confirm-Delete: true' to proceed."
                 });
 
-            var existing = await _repository.GetByIdAsync(id);
-            if (existing == null)
-                return NotFound(new { message = $"Store with ID {id} not found." });
-
             try
             {
+                var existing = await _repository.GetByIdAsync(id);
+                if (existing == null)
+                    return NotFound(new { message = $"Store with ID {id} not found." });
+
                 await _repository.DeleteAsync(id);
+
+                return Ok(new { message = $"Store ID {id} deleted successfully." });
             }
             catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("REFERENCE constraint") == true)
             {
@@ -132,8 +155,10 @@ namespace ShelfSense.WebAPI.Controllers
                     message = $"Cannot delete Store ID {id} because it is referenced in other records (e.g., Staff, Shelf, or SalesHistory)."
                 });
             }
-
-            return Ok(new { message = $"Store ID {id} deleted successfully." });
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error deleting store {id}.", details = ex.Message });
+            }
         }
     }
 }

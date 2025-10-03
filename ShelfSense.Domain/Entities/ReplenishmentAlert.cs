@@ -23,6 +23,8 @@ public class ReplenishmentAlert
     public string Status { get; set; } = "open";
 
     public DateTime CreatedAt { get; set; }
+    public string? FulfillmentNote { get; set; } // in ReplenishmentAlert
+
 
     // Navigation
     public Product? Product { get; set; }

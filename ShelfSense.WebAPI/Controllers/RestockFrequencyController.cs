@@ -22,40 +22,51 @@ namespace ShelfSense.WebAPI.Controllers
         [HttpGet("summary")]
         public async Task<IActionResult> GetRestockFrequencySummary()
         {
-            var result = await _context.ReplenishmentAlerts
-                .GroupBy(r => new { r.ProductId, r.ShelfId })
-                .Select(g => new RestockFrequencyDto
-                {
-                    ProductId = (int)g.Key.ProductId,
-                    ShelfId = (int)g.Key.ShelfId,
-                    AlertCount = g.Count(),
-                    TotalDays = EF.Functions.DateDiffDay(
-                        g.Min(r => r.CreatedAt),
-                        g.Max(r => r.CreatedAt)
-                    ),
-                    AvgRestockFrequencyDays = Math.Round(
-                        g.Count() == 0 ? 0 :
-                        (double)EF.Functions.DateDiffDay(
+            try
+            {
+                var result = await _context.ReplenishmentAlerts
+                    .GroupBy(r => new { r.ProductId, r.ShelfId })
+                    .Select(g => new RestockFrequencyDto
+                    {
+                        ProductId = (int)g.Key.ProductId,
+                        ShelfId = (int)g.Key.ShelfId,
+                        AlertCount = g.Count(),
+                        TotalDays = EF.Functions.DateDiffDay(
                             g.Min(r => r.CreatedAt),
                             g.Max(r => r.CreatedAt)
-                        ) / g.Count(), 2)
-                })
-                .ToListAsync();
+                        ),
+                        AvgRestockFrequencyDays = Math.Round(
+                            g.Count() == 0 ? 0 :
+                            (double)EF.Functions.DateDiffDay(
+                                g.Min(r => r.CreatedAt),
+                                g.Max(r => r.CreatedAt)
+                            ) / g.Count(), 2)
+                    })
+                    .ToListAsync();
 
-            if (result == null || result.Count == 0)
-            {
+                if (result == null || result.Count == 0)
+                {
+                    return Ok(new
+                    {
+                        message = "No restock frequency data available.",
+                        data = new List<RestockFrequencyDto>()
+                    });
+                }
+
                 return Ok(new
                 {
-                    message = "No restock frequency data available.",
-                    data = new List<RestockFrequencyDto>()
+                    message = "Restock frequency summary retrieved successfully.",
+                    data = result
                 });
             }
-
-            return Ok(new
+            catch (Exception ex)
             {
-                message = "Restock frequency summary retrieved successfully.",
-                data = result
-            });
+                return StatusCode(500, new
+                {
+                    message = "Error retrieving restock frequency summary.",
+                    details = ex.Message
+                });
+            }
         }
     }
 }

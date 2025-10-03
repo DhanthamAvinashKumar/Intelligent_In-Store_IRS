@@ -1,108 +1,6 @@
-﻿//using Microsoft.AspNetCore.Authentication.JwtBearer;
-//using Microsoft.AspNetCore.Identity;
-//using Microsoft.AspNetCore.Mvc;
-//using Microsoft.EntityFrameworkCore;
-//using Microsoft.IdentityModel.Tokens;
-//using ShelfSense.Application.Interfaces;
-//using ShelfSense.Application.Mapping;
-//using ShelfSense.Application.Services.Auth;
-//using ShelfSense.Domain.Identity;
-//using ShelfSense.Infrastructure.Data;
-//using ShelfSense.Infrastructure.Repositories;
-//using System;
-//using System.Text;
-
-//var builder = WebApplication.CreateBuilder(args);
-
-//// Add services to the container.
-
-
-//// Register repositories
-//builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
-//builder.Services.AddScoped<IProductRepository, ProductRepository>();
-//builder.Services.AddScoped<IStoreRepository,StoreRepository>();
-//builder.Services.AddScoped<IShelfRepository, ShelfRepository>();
-//builder.Services.AddScoped<IProductShelfRepository, ProductShelfRepository>();
-//builder.Services.AddScoped<IReplenishmentAlert, ReplenishmentAlertRepository>();
-//builder.Services.AddScoped<IStaffRepository, StaffRepository>();
-//builder.Services.AddScoped<IRestockTaskRepository, RestockTaskRepository>();
-//builder.Services.AddScoped<IInventoryReport, InventoryReportRepository>();
-//builder.Services.AddScoped<IStockRequest,StockRequestRepository>();
-//builder.Services.AddScoped<ISalesHistory, SalesHistoryRepository>();
-
-
-
-
-//builder.Services.AddDbContext<ShelfSenseDbContext>(options =>
-//    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-
-
-//// Added Identity
-//builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
-//    .AddEntityFrameworkStores<ShelfSenseDbContext>()
-//    .AddDefaultTokenProviders();
-
-//builder.Services.AddScoped<JwtTokenService>();
-
-//builder.Services.AddAuthentication(options =>
-//{
-//    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-//    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-//})
-//.AddJwtBearer(options =>
-//{
-//    options.TokenValidationParameters = new TokenValidationParameters
-//    {
-//        ValidateIssuer = true,
-//        ValidateAudience = true,
-//        ValidateLifetime = true,
-//        ValidateIssuerSigningKey = true,
-//        ValidIssuer = builder.Configuration["Jwt:Issuer"],
-//        ValidAudience = builder.Configuration["Jwt:Audience"],
-//        IssuerSigningKey = new SymmetricSecurityKey(
-//            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]))
-//    };
-//});
-
-//builder.Services.AddAuthorization();
-
-
-//// 🔄 Register AutoMapper
-//builder.Services.AddAutoMapper(typeof(MappingProfile));
-
-//builder.Services.AddControllers();
-//// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-//builder.Services.AddEndpointsApiExplorer();
-//builder.Services.AddSwaggerGen();
-
-//var app = builder.Build();
-
-//// Configure the HTTP request pipeline.
-//if (app.Environment.IsDevelopment())
-//{
-//    //app.UseDeveloperExceptionPage();
-//    app.UseSwagger();
-//    app.UseSwaggerUI();
-//}
-
-//using (var scope = app.Services.CreateScope())
-//{
-//    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-//    await RoleSeeder.SeedRolesAsync(roleManager);
-//}
-
-//app.UseHttpsRedirection();
-//app.UseAuthentication();
-//app.UseAuthorization();
-
-//app.MapControllers();
-
-//app.Run();
-
-
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -114,7 +12,7 @@ using ShelfSense.Application.Settings;
 using ShelfSense.Domain.Identity;
 using ShelfSense.Infrastructure.Data;
 using ShelfSense.Infrastructure.Repositories;
-using ShelfSense.Infrastructure.Seeders; // ✅ Add this if RoleSeeder is in WebAPI
+using ShelfSense.Infrastructure.Seeders;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -130,6 +28,24 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
 
 // 🔧 Register JWT Token Service
 builder.Services.AddScoped<JwtTokenService>();
+
+
+// Handling null values during login and register
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.SuppressModelStateInvalidFilter = true;
+});
+
+
+// Rate limting for login attempts
+builder.Services.Configure<IdentityOptions>(options =>
+{
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15); // Lockout duration
+    options.Lockout.MaxFailedAccessAttempts = 3; // Threshold
+    options.Lockout.AllowedForNewUsers = true;   // Enable for new users
+});
+
+
 
 // 🔧 Register Repositories
 builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
@@ -210,12 +126,10 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-
-// Refresh toeken settings
+// Refresh token settings
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<IOptions<JwtSettings>>().Value);
-
 
 var app = builder.Build();
 
@@ -233,8 +147,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Forbidden Entry
-
+// Forbidden Entry middleware
 app.Use(async (context, next) =>
 {
     await next();

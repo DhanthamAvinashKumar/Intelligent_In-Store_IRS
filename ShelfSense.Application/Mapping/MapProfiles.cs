@@ -54,6 +54,9 @@ namespace ShelfSense.Application.Mapping
             CreateMap<SalesHistoryCreateRequest, SalesHistory>();
             CreateMap<SalesHistory, SalesHistoryResponse>();
 
+            // 🌟 NEW MAPPING for Archived Alerts 🌟
+            CreateMap<ClosedReplenishmentAlert, ClosedAlertResponse>();
+
 
         }
     }

@@ -36,18 +36,27 @@ namespace ShelfSense.WebAPI.Controllers
 
                 foreach (var report in reports)
                 {
-                    var shelf = await _context.Shelves
-                        .Where(s => s.ShelfId == report.ShelfId)
-                        .Select(s => new { s.Capacity })
-                        .FirstOrDefaultAsync();
+                    try
+                    {
+                        var shelf = await _context.Shelves
+                            .Where(s => s.ShelfId == report.ShelfId)
+                            .Select(s => new { s.Capacity })
+                            .FirstOrDefaultAsync();
 
-                    var response = _mapper.Map<InventoryReportResponse>(report);
-                    response.ShelfCapacity = shelf?.Capacity ?? 0;
-                    response.UtilizationPercent = shelf != null && shelf.Capacity > 0
-                        ? Math.Round(report.QuantityOnShelf * 100.0 / shelf.Capacity, 2)
-                        : 0;
+                        var response = _mapper.Map<InventoryReportResponse>(report);
+                        response.ShelfCapacity = shelf?.Capacity ?? 0;
+                        response.UtilizationPercent = shelf != null && shelf.Capacity > 0
+                            ? Math.Round(report.QuantityOnShelf * 100.0 / shelf.Capacity, 2)
+                            : 0;
 
-                    enriched.Add(response);
+                        enriched.Add(response);
+                    }
+                    catch (Exception innerEx)
+                    {
+                        // If enrichment for one report fails, continue with others
+                        enriched.Add(_mapper.Map<InventoryReportResponse>(report));
+                        // Optionally log innerEx here
+                    }
                 }
 
                 return Ok(new
@@ -58,11 +67,16 @@ namespace ShelfSense.WebAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error retrieving inventory reports.", details = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Error retrieving inventory reports.",
+                    details = ex.Message
+                });
             }
         }
 
-      
+
+
 
 
         // 🔍 Get single report by ID

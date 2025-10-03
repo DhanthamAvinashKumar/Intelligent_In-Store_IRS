@@ -22,56 +22,80 @@ namespace ShelfSense.WebAPI.Controllers
         [HttpGet("low-utilization-with-sales")]
         public async Task<IActionResult> GetLowUtilizationWithSales()
         {
-            var utilizationData = await _context.ProductShelves
-                .Join(_context.Shelves,
-                    ps => ps.ShelfId,
-                    s => s.ShelfId,
-                    (ps, s) => new
-                    {
-                        ps.ProductId,
-                        ps.ShelfId,
-                        ps.Quantity,
-                        s.Capacity,
-                        UtilizationPercent = Math.Round(ps.Quantity * 100.0 / s.Capacity, 2)
-                    })
-                .Where(x => x.UtilizationPercent < 50)
-                .ToListAsync();
-
-            var enriched = new List<ShelfUtilizationDto>();
-
-            foreach (var entry in utilizationData)
+            try
             {
-                var recentSales = await _context.SalesHistories
-                    .Where(sh => sh.ProductId == entry.ProductId && sh.SaleTime >= DateTime.Now.AddDays(-7))
+                var utilizationData = await _context.ProductShelves
+                    .Join(_context.Shelves,
+                        ps => ps.ShelfId,
+                        s => s.ShelfId,
+                        (ps, s) => new
+                        {
+                            ps.ProductId,
+                            ps.ShelfId,
+                            ps.Quantity,
+                            s.Capacity,
+                            UtilizationPercent = Math.Round(ps.Quantity * 100.0 / s.Capacity, 2)
+                        })
+                    .Where(x => x.UtilizationPercent < 50)
                     .ToListAsync();
 
-                enriched.Add(new ShelfUtilizationDto
+                var enriched = new List<ShelfUtilizationDto>();
+
+                foreach (var entry in utilizationData)
                 {
-                    ProductId = entry.ProductId,
-                    ShelfId = entry.ShelfId,
-                    Quantity = entry.Quantity,
-                    Capacity = entry.Capacity,
-                    UtilizationPercent = entry.UtilizationPercent,
-                    SalesCountLast7Days = recentSales.Count,
-                    LastSaleTime = recentSales.Max(sh => (DateTime?)sh.SaleTime)
+                    try
+                    {
+                        var recentSales = await _context.SalesHistories
+                            .Where(sh => sh.ProductId == entry.ProductId && sh.SaleTime >= DateTime.Now.AddDays(-7))
+                            .ToListAsync();
+
+                        enriched.Add(new ShelfUtilizationDto
+                        {
+                            ProductId = entry.ProductId,
+                            ShelfId = entry.ShelfId,
+                            Quantity = entry.Quantity,
+                            Capacity = entry.Capacity,
+                            UtilizationPercent = entry.UtilizationPercent,
+                            SalesCountLast7Days = recentSales.Count,
+                            LastSaleTime = recentSales.Max(sh => (DateTime?)sh.SaleTime)
+                        });
+                    }
+                    catch (Exception innerEx)
+                    {
+                        // If enrichment for one shelf fails, skip it but continue with others
+                        enriched.Add(new ShelfUtilizationDto
+                        {
+                            ProductId = entry.ProductId,
+                            ShelfId = entry.ShelfId,
+                            Quantity = entry.Quantity,
+                            Capacity = entry.Capacity,
+                            UtilizationPercent = entry.UtilizationPercent,
+                            SalesCountLast7Days = 0,
+                            LastSaleTime = null
+                        });
+                        // Optionally log innerEx here
+                    }
+                }
+
+                var filtered = enriched
+                    .Where(e => e.SalesCountLast7Days >= 1)
+                    .OrderBy(e => e.UtilizationPercent)
+                    .ToList();
+
+                return Ok(new
+                {
+                    message = "Low-utilization shelves with recent sales retrieved successfully.",
+                    data = filtered
                 });
             }
-
-            var filtered = enriched
-                .Where(e => e.SalesCountLast7Days >= 1)
-                .OrderBy(e => e.UtilizationPercent)
-                .ToList();
-
-            // Debug output
-            Console.WriteLine($"Total shelves evaluated: {utilizationData.Count}");
-            Console.WriteLine($"Enriched entries: {enriched.Count}");
-            Console.WriteLine($"Filtered entries: {filtered.Count}");
-
-            return Ok(new
+            catch (Exception ex)
             {
-                message = "Low-utilization shelves with recent sales retrieved successfully.",
-                data = filtered
-            });
+                return StatusCode(500, new
+                {
+                    message = "Error retrieving low-utilization shelves with sales.",
+                    details = ex.Message
+                });
+            }
         }
     }
 }

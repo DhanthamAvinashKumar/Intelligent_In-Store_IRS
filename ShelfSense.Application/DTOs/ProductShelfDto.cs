@@ -18,7 +18,7 @@ namespace ShelfSense.Application.DTOs
     public class ProductShelfResponse
     {
         public long ProductShelfId { get; set; }
-        public long ProductId { get; set; }
+        //public long ProductId { get; set; }
         public long ShelfId { get; set; }
         public int Quantity { get; set; }
         public DateTime LastRestockedAt { get; set; }

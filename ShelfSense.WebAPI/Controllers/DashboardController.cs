@@ -1,34 +1,7 @@
-﻿//using Microsoft.AspNetCore.Authorization;
-//using Microsoft.AspNetCore.Mvc;
-
-//namespace ShelfSense.WebAPI.Controllers
-//{
-//    [ApiController]
-//    [Route("api/[controller]")]
-//    public class DashboardController : ControllerBase
-//    {
-//        [Authorize(Roles = "manager")]
-//        [HttpGet("manager-dashboard")]
-//        public IActionResult GetManagerDashboard() =>
-//            Ok("Visible to managers only");
-
-//        [Authorize(Roles = "staff")]
-//        [HttpGet("staff-tasks")]
-//        public IActionResult GetStaffTasks() =>
-//            Ok("Visible to staff only");
-
-//        [Authorize(Roles = "manager,staff")]
-//        [HttpGet("shared-tasks")]
-//        public IActionResult GetSharedTasks() =>
-//            Ok("Visible to both managers and staff");
-//    }
-//}
-
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShelfSense.Application.DTOs;
-using ShelfSense.Domain.Entities;
 using ShelfSense.Infrastructure.Data;
 
 namespace ShelfSense.WebAPI.Controllers
@@ -59,23 +32,39 @@ namespace ShelfSense.WebAPI.Controllers
 
                 foreach (var ps in productShelves)
                 {
-                    var latestRestock = await _context.RestockTasks
-                        .Where(rt => rt.ProductId == ps.ProductId && rt.ShelfId == ps.ShelfId && rt.Status == "completed")
-                        .OrderByDescending(rt => rt.CompletedAt)
-                        .FirstOrDefaultAsync();
-
-                    var alertExists = await _context.ReplenishmentAlerts
-                        .AnyAsync(ra => ra.ProductId == ps.ProductId && ra.ShelfId == ps.ShelfId && ra.Status != "closed");
-
-                    response.Add(new DashboardInventoryReportResponse
+                    try
                     {
-                        ProductId = ps.ProductId,
-                        ShelfId = ps.ShelfId,
-                        ReportDate = DateTime.Today,
-                        QuantityOnShelf = ps.Quantity,
-                        //QuantityRestocked = latestRestock?.QuantityRestocked,
-                        AlertTriggered = alertExists
-                    });
+                        var latestRestock = await _context.RestockTasks
+                            .Where(rt => rt.ProductId == ps.ProductId && rt.ShelfId == ps.ShelfId && rt.Status == "completed")
+                            .OrderByDescending(rt => rt.CompletedAt)
+                            .FirstOrDefaultAsync();
+
+                        var alertExists = await _context.ReplenishmentAlerts
+                            .AnyAsync(ra => ra.ProductId == ps.ProductId && ra.ShelfId == ps.ShelfId && ra.Status != "closed");
+
+                        response.Add(new DashboardInventoryReportResponse
+                        {
+                            ProductId = ps.ProductId,
+                            ShelfId = ps.ShelfId,
+                            ReportDate = DateTime.Today,
+                            QuantityOnShelf = ps.Quantity,
+                            //QuantityRestocked = latestRestock?.QuantityRestocked,
+                            AlertTriggered = alertExists
+                        });
+                    }
+                    catch (Exception innerEx)
+                    {
+                        // If one shelf fails, continue with others but log/return partial info
+                        response.Add(new DashboardInventoryReportResponse
+                        {
+                            ProductId = ps.ProductId,
+                            ShelfId = ps.ShelfId,
+                            ReportDate = DateTime.Today,
+                            QuantityOnShelf = ps.Quantity,
+                            AlertTriggered = false
+                        });
+                        // Optionally log innerEx here
+                    }
                 }
 
                 return Ok(new
@@ -86,7 +75,11 @@ namespace ShelfSense.WebAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error generating dashboard summary.", details = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Error generating dashboard summary.",
+                    details = ex.Message
+                });
             }
         }
     }

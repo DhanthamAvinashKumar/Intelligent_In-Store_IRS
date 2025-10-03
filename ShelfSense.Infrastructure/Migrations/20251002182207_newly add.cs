@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace ShelfSense.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class RefreshTokens : Migration
+    public partial class newlyadd : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -30,10 +30,11 @@ namespace ShelfSense.Infrastructure.Migrations
                 columns: table => new
                 {
                     Id = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    StoreId = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    RefreshToken = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    RefreshTokenExpiryTime = table.Column<DateTime>(type: "datetime2", nullable: true),
                     RoleType = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    RefreshToken = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    RefreshTokenExpiryTime = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    StoreId = table.Column<long>(type: "bigint", nullable: true),
+                    Name = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     UserName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
                     NormalizedUserName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
                     Email = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
@@ -272,6 +273,37 @@ namespace ShelfSense.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "DeliveredStockRequests",
+                columns: table => new
+                {
+                    DeliveredRequestId = table.Column<long>(type: "bigint", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    OriginalRequestId = table.Column<long>(type: "bigint", nullable: false),
+                    ProductId = table.Column<long>(type: "bigint", nullable: false),
+                    StoreId = table.Column<long>(type: "bigint", nullable: false),
+                    Quantity = table.Column<int>(type: "int", nullable: false),
+                    DeliveredAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    AlertId = table.Column<long>(type: "bigint", nullable: true),
+                    Notes = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_DeliveredStockRequests", x => x.DeliveredRequestId);
+                    table.ForeignKey(
+                        name: "FK_DeliveredStockRequests_Products_ProductId",
+                        column: x => x.ProductId,
+                        principalTable: "Products",
+                        principalColumn: "ProductId",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_DeliveredStockRequests_Stores_StoreId",
+                        column: x => x.StoreId,
+                        principalTable: "Stores",
+                        principalColumn: "StoreId",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "SalesHistory",
                 columns: table => new
                 {
@@ -310,7 +342,8 @@ namespace ShelfSense.Infrastructure.Migrations
                     Quantity = table.Column<int>(type: "int", nullable: false),
                     RequestDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
                     DeliveryStatus = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false, defaultValue: "requested"),
-                    EstimatedTimeOfArrival = table.Column<DateTime>(type: "datetime2", nullable: true)
+                    EstimatedTimeOfArrival = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    DeliveredAt = table.Column<DateTime>(type: "datetime2", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -399,7 +432,8 @@ namespace ShelfSense.Infrastructure.Migrations
                     PredictedDepletionDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UrgencyLevel = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false, defaultValue: "open"),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()")
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
+                    FulfillmentNote = table.Column<string>(type: "nvarchar(max)", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -505,6 +539,16 @@ namespace ShelfSense.Infrastructure.Migrations
                 table: "Category",
                 column: "CategoryName",
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_DeliveredStockRequests_ProductId",
+                table: "DeliveredStockRequests",
+                column: "ProductId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_DeliveredStockRequests_StoreId",
+                table: "DeliveredStockRequests",
+                column: "StoreId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_InventoryReport_ProductId_ShelfId_ReportDate",
@@ -640,6 +684,9 @@ namespace ShelfSense.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "AspNetUserTokens");
+
+            migrationBuilder.DropTable(
+                name: "DeliveredStockRequests");
 
             migrationBuilder.DropTable(
                 name: "InventoryReport");

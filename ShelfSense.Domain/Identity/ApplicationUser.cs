@@ -11,13 +11,12 @@ namespace ShelfSense.Domain.Identity
 
     public class ApplicationUser : IdentityUser
     {
-        // Inherited properties from IdentityUser:
-        //Implementeddomain-specific fields
-        public string StoreId { get; set; }
-        public string RoleType { get; set; } // Manager, Staff, Warehouse
-
-        public string RefreshToken { get; set; }
-        public DateTime RefreshTokenExpiryTime { get; set; }
+        public string? RefreshToken { get; set; }
+        public DateTime? RefreshTokenExpiryTime { get; set; }
+        public string RoleType { get; set; }
+        public long? StoreId { get; set; }   // make nullable
+        public string? Name { get; set; }
     }
+
 
 }

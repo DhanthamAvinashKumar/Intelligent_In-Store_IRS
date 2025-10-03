@@ -1,6 +1,4 @@
-﻿ 
-
-using AutoMapper;
+﻿using AutoMapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -31,21 +29,35 @@ namespace ShelfSense.WebAPI.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAll()
         {
-            var tasks = await _repository.GetAll().ToListAsync();
-            var response = _mapper.Map<List<RestockTaskResponse>>(tasks);
-            return Ok(new { message = "Restock tasks retrieved successfully.", data = response });
+            try
+            {
+                var tasks = await _repository.GetAll().ToListAsync();
+                var response = _mapper.Map<List<RestockTaskResponse>>(tasks);
+                return Ok(new { message = "Restock tasks retrieved successfully.", data = response });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error retrieving restock tasks.", details = ex.Message });
+            }
         }
 
         // 🔍 Get task by ID
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(long id)
         {
-            var task = await _repository.GetByIdAsync(id);
-            if (task == null)
-                return NotFound(new { message = $"Restock task ID {id} not found." });
+            try
+            {
+                var task = await _repository.GetByIdAsync(id);
+                if (task == null)
+                    return NotFound(new { message = $"Restock task ID {id} not found." });
 
-            var response = _mapper.Map<RestockTaskResponse>(task);
-            return Ok(response);
+                var response = _mapper.Map<RestockTaskResponse>(task);
+                return Ok(new { message = "Restock task retrieved successfully.", data = response });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error retrieving restock task {id}.", details = ex.Message });
+            }
         }
 
         // 📝 Create new restock task and log inventory report
@@ -53,29 +65,40 @@ namespace ShelfSense.WebAPI.Controllers
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] RestockTaskCreateRequest request)
         {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
+            try
+            {
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
 
-            if (!await _context.Products.AnyAsync(p => p.ProductId == request.ProductId))
-                return BadRequest(new { message = $"Product ID '{request.ProductId}' does not exist." });
+                if (!await _context.Products.AnyAsync(p => p.ProductId == request.ProductId))
+                    return BadRequest(new { message = $"Product ID '{request.ProductId}' does not exist." });
 
-            if (!await _context.Shelves.AnyAsync(s => s.ShelfId == request.ShelfId))
-                return BadRequest(new { message = $"Shelf ID '{request.ShelfId}' does not exist." });
+                if (!await _context.Shelves.AnyAsync(s => s.ShelfId == request.ShelfId))
+                    return BadRequest(new { message = $"Shelf ID '{request.ShelfId}' does not exist." });
 
-            if (!await _context.Staffs.AnyAsync(st => st.StaffId == request.AssignedTo))
-                return BadRequest(new { message = $"Staff ID '{request.AssignedTo}' does not exist." });
+                if (!await _context.Staffs.AnyAsync(st => st.StaffId == request.AssignedTo))
+                    return BadRequest(new { message = $"Staff ID '{request.AssignedTo}' does not exist." });
 
-            var entity = _mapper.Map<RestockTask>(request);
-            entity.Status = "pending";
-            entity.AssignedAt = DateTime.UtcNow;
+                var entity = _mapper.Map<RestockTask>(request);
+                entity.Status = "pending";
+                entity.AssignedAt = DateTime.UtcNow;
 
-            await _repository.AddAsync(entity);
+                await _repository.AddAsync(entity);
 
-            // 🧠 Log to InventoryReport
-            await LogInventoryReportAsync(entity.ProductId, entity.ShelfId, null, true);
+                // 🧠 Log to InventoryReport
+                await LogInventoryReportAsync(entity.ProductId, entity.ShelfId, null, true);
 
-            var response = _mapper.Map<RestockTaskResponse>(entity);
-            return CreatedAtAction(nameof(GetById), new { id = response.TaskId }, response);
+                var response = _mapper.Map<RestockTaskResponse>(entity);
+                return CreatedAtAction(nameof(GetById), new { id = response.TaskId }, new
+                {
+                    message = "Restock task created successfully.",
+                    data = response
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error creating restock task.", details = ex.Message });
+            }
         }
 
         // ✅ Mark task as completed and log inventory report
@@ -83,62 +106,75 @@ namespace ShelfSense.WebAPI.Controllers
         [HttpPut("{id}/complete")]
         public async Task<IActionResult> CompleteTask(long id, [FromBody] int quantityRestocked)
         {
-            var task = await _repository.GetByIdAsync(id);
-            if (task == null)
-                return NotFound(new { message = $"Restock task ID {id} not found." });
-
-            if (task.Status == "completed")
-                return BadRequest(new { message = "Task is already marked as completed." });
-
-            task.Status = "completed";
-            task.CompletedAt = DateTime.UtcNow;
-            //task.QuantityRestocked = quantityRestocked;
-
-            var shelf = await _context.ProductShelves
-                .FirstOrDefaultAsync(ps => ps.ProductId == task.ProductId && ps.ShelfId == task.ShelfId);
-
-            if (shelf != null)
+            try
             {
-                shelf.Quantity += quantityRestocked;
-                _context.ProductShelves.Update(shelf);
+                var task = await _repository.GetByIdAsync(id);
+                if (task == null)
+                    return NotFound(new { message = $"Restock task ID {id} not found." });
+
+                if (task.Status == "completed")
+                    return BadRequest(new { message = "Task is already marked as completed." });
+
+                task.Status = "completed";
+                task.CompletedAt = DateTime.UtcNow;
+
+                var shelf = await _context.ProductShelves
+                    .FirstOrDefaultAsync(ps => ps.ProductId == task.ProductId && ps.ShelfId == task.ShelfId);
+
+                if (shelf != null)
+                {
+                    shelf.Quantity += quantityRestocked;
+                    _context.ProductShelves.Update(shelf);
+                }
+
+                await _repository.UpdateAsync(task);
+
+                // 🧠 Log to InventoryReport
+                await LogInventoryReportAsync(task.ProductId, task.ShelfId, quantityRestocked, true);
+
+                return Ok(new { message = "Restock task marked as completed." });
             }
-
-            await _repository.UpdateAsync(task);
-
-            // 🧠 Log to InventoryReport
-            await LogInventoryReportAsync(task.ProductId, task.ShelfId, quantityRestocked, true);
-
-            return Ok(new { message = "Restock task marked as completed." });
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error completing restock task {id}.", details = ex.Message });
+            }
         }
 
         // 🔧 Internal method to log inventory report
         private async Task LogInventoryReportAsync(long productId, long shelfId, int? quantityRestocked, bool alertTriggered)
         {
-            var shelfState = await _context.ProductShelves
-                .FirstOrDefaultAsync(ps => ps.ProductId == productId && ps.ShelfId == shelfId);
-
-            if (shelfState == null) return;
-
-            bool reportExists = await _context.InventoryReports.AnyAsync(r =>
-                r.ProductId == productId &&
-                r.ShelfId == shelfId &&
-                r.ReportDate == DateTime.Today);
-
-            if (!reportExists)
+            try
             {
-                var report = new InventoryReport
-                {
-                    ProductId = productId,
-                    ShelfId = shelfId,
-                    ReportDate = DateTime.Today,
-                    QuantityOnShelf = shelfState.Quantity,
-                    QuantityRestocked = quantityRestocked,
-                    AlertTriggered = alertTriggered,
-                    CreatedAt = DateTime.UtcNow
-                };
+                var shelfState = await _context.ProductShelves
+                    .FirstOrDefaultAsync(ps => ps.ProductId == productId && ps.ShelfId == shelfId);
 
-                _context.InventoryReports.Add(report);
-                await _context.SaveChangesAsync();
+                if (shelfState == null) return;
+
+                bool reportExists = await _context.InventoryReports.AnyAsync(r =>
+                    r.ProductId == productId &&
+                    r.ShelfId == shelfId &&
+                    r.ReportDate == DateTime.Today);
+
+                if (!reportExists)
+                {
+                    var report = new InventoryReport
+                    {
+                        ProductId = productId,
+                        ShelfId = shelfId,
+                        ReportDate = DateTime.Today,
+                        QuantityOnShelf = shelfState.Quantity,
+                        QuantityRestocked = quantityRestocked,
+                        AlertTriggered = alertTriggered,
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    _context.InventoryReports.Add(report);
+                    await _context.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                // Optionally log error, but don’t break the main flow
             }
         }
 
@@ -147,14 +183,19 @@ namespace ShelfSense.WebAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(long id)
         {
-            var existing = await _repository.GetByIdAsync(id);
-            if (existing == null)
-                return NotFound(new { message = $"Restock task ID {id} not found." });
+            try
+            {
+                var existing = await _repository.GetByIdAsync(id);
+                if (existing == null)
+                    return NotFound(new { message = $"Restock task ID {id} not found." });
 
-            await _repository.DeleteAsync(id);
-            return NoContent();
+                await _repository.DeleteAsync(id);
+                return Ok(new { message = $"Restock task ID {id} deleted successfully." });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error deleting restock task {id}.", details = ex.Message });
+            }
         }
-
-        
     }
 }
